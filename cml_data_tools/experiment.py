@@ -89,10 +89,6 @@ class Experiment:
         return self._model
 
     @property
-    def expressions_(self):
-        yield from self._read(self.expressions_path_)
-
-    @property
     def trajectories_(self):
         yield from self._read(self.trajectories_path_)
 
@@ -219,29 +215,29 @@ class Experiment:
         self.model_path_ = path
         return self.model_
 
-    def compute_expressions(self, key='expressions', freq='D', agg='max'):
-        path = (self.cache/key).with_suffix(self.suffix)
-        if path not in self.cache.iterdir():
-            with open(path, 'wb') as file:
-                for df in self.curves_:
-                    X = df.resample(freq, level='date').mean()
-                    #X = self.standardizer_.transform(X.to_dense())
-                    X = self.model_.transform(X)
-                    if agg is not None:
-                        X = X.agg(agg)
-                    X.name = df.index.get_level_values('id')[0]
-                    pickle.dump(X, file, protocol=self.protocol)
-        self.expressions_path_ = path
+    def compute_expressions(self, key='expressions', freq='6D', agg=None):
+        self.expressions_ = []
+        for df in self.curves_:
+            X = df.resample(freq, level='date').mean()
+            X = X.to_dense()
+            #X = self.standardizer_.transform(X.to_dense())
+            X = self.model_.transform(X)
+            if agg is not None:
+                X = X.agg(agg)
+            X.name = df.index.get_level_values('id')[0]
+            self.expressions_.append(X)
         return self.expressions_
 
     def compute_trajectories(self, key='trajectories',
                              configs=None,
-                             freq='6MS', agg='max'):
+                             freq='6MS',
+                             agg='max'):
         path = (self.cache/key).with_suffix(self.suffix)
         if path not in self.cache.iterdir():
             with open(path, 'wb') as file:
                 for expr in self.expressions_:
                     df = expr.resample(freq, level='date').agg(agg)
+                    # XXX: pickling loses the name attribute
                     df.name = expr.name
                     pickle.dump(df, file, protocol=self.protocol)
         self.trajectories_path_ = path
