@@ -1,11 +1,16 @@
 """
 An Experiment class is a convenience for running scripts
 """
+import collections
 import pathlib
 import pickle
 import operator
 
 import pandas as pd
+
+from cml_data_tools.source_ehr import (make_data_df, make_meta_df,
+                                       aggregate_data, aggregate_meta)
+from cml_data_tools.cross_sections import stack
 
 
 class Experiment:
@@ -17,76 +22,219 @@ class Experiment:
         self.cache.mkdir(exist_ok=True)
         self.protocol = protocol
 
-        # Learned or otherwise generated attributes
-        self.data_ = None
-        self.meta_ = None
-        self.curves_ = None
-        self.curves_spec_ = None
-        self.cross_sections_ = None
-
-    def _write_cache(self, key, it):
-        with open(self.cache/f'{key}.pkl', 'wb') as file:
-            for val in it:
-                pickle.dump(val, file, protocol=self.protocol)
-
-    def _read_cache(self, key):
-        with open(self.cache/f'{key}.pkl', 'rb') as file:
+    def _read(self, path, post=None):
+        with open(path, 'rb') as file:
             while True:
                 try:
-                    yield pickle.load(file)
+                    x = pickle.load(file)
                 except EOFError:
                     break
+                else:
+                    if callable(post):
+                        yield post(x)
+                    else:
+                        yield x
 
-    def _has_cached(self, key):
-        return key in {p.stem for p in self.cache.iterdir()}
+    @property
+    def data_(self):
+        yield from self._read(self.data_path_, post=make_data_df)
 
-    def fetch_data(self, key='data', configs=None, eager=False):
-        """Populate data_"""
-        cols = ('ptid', 'date', 'mode', 'channel', 'value')
+    @property
+    def meta_(self):
+        if not hasattr(self, '_meta_df'):
+            with open(self.meta_path_, 'rb') as file:
+                self._meta_df = pickle.load(file)
+        return self._meta_df
+
+    @property
+    def curves_(self):
+        yield from self._read(self.curve_path_)
+
+    @property
+    def cross_sections_(self):
+        yield from self._read(self.cross_sections_path_)
+
+    @property
+    def data_matrix_(self):
+        if not hasattr(self, '_data_matrix'):
+            with open(self.data_matrix_path_, 'rb') as file:
+                self._data_matrix = pickle.load(file)
+        return self._data_matrix
+
+    @property
+    def standardizer_(self):
+        """Customized via make_standardizer"""
+        if not hasattr(self, '_standardizer'):
+            # Make a default standardizer using the default configs
+            self.make_standardizer()
+        return self._standardizer
+
+    @property
+    def standardized_data_(self):
+        if not hasattr(self, '_standardized_data'):
+            with open(self.standardized_data_path_, 'rb') as file:
+                self._standardized_data = pickle.load(file)
+        return self._standardized_data
+
+    @property
+    def model_(self):
+        if not hasattr(self, '_model'):
+            with open(self.model_path_, 'rb') as file:
+                self._model = pickle.load(file)
+        return self._model
+
+    @property
+    def expressions_(self):
+        yield from self._read(self.expressions_path_)
+
+    @property
+    def trajectories_(self):
+        yield from self._read(self.trajectories_path_)
+
+    def fetch_data(self, key='data', configs=None):
+        """Populate self.data_"""
         srcs = configs or self.configs
+        path = (self.cache/key).with_suffix('pkl')
 
-        if not self._has_cached(key):
-            self._write_cache(key, aggregate_data(srcs))
+        if path not in self.cache.iterdir():
+            with open(path, 'wb') as file:
+                for recs in aggregate_data(srcs):
+                    pickle.dump(recs, file, protocol=self.protocol)
 
-        data = self._read_cache(key)
-        self.data_ = list(data) if eager else data
+        self.data_path_ path
+        return self.data_
 
     def fetch_meta(self, key='meta', configs=None):
-        """Populate meta_"""
-        cols = ('mode', 'channel', 'description', 'fill')
+        """Populate self.meta_"""
         srcs = configs or self.configs
+        path = (self.cache/key).with_suffix('pkl')
 
-        if not self._has_cached(key):
-            self._write_cache(key, aggregate_data(srcs))
+        if path not in self.cache.iterdir():
+            meta = make_meta_df(aggregate_meta(srcs))
+            with open(path, 'wb') as file:
+                pickle.dump(meta, file, protocol=self.protocol)
 
-        meta = list(self._read_cache(key))
-        self.meta_ = pd.DataFrame(meta, columns=cols)
+        self.meta_path_ = path
+        return self.meta_
 
     def compute_curves(self, key='curves',
                        configs=None,
                        resolution='D',
-                       eager=False):
-        """Populate curves_spec_ and curves_"""
-        if configs is None:
-            configs = self.configs
+                       extra_curve_kws=None):
+        """Populate self.curves_"""
+        cfgs = configs or self.configs
+        xtra = extra_curve_kws or {}
+        path = (self.cache/key).with_suffix('pkl')
 
-        if self.data_ is None:
-            raise RuntimeError
+        spec = {}
+        for config in cfgs:
+            extra_kws = xtra.get(config.mode, {})
+            func = config.curve_builder(**extra_kws)
+            spec[config.mode] = func
 
-        spec = {c.mode: c.curve_cls(**c.curve_kws) for c in configs}
-        self.curves_spec_ = spec
+        if path not in self.cache.iterdir():
+            with open(path, 'wb') as file:
+                for df in self.data_:
+                    curves = build_patient_curves(df, spec, resolution)
+                    pickle.dump(curves, file, protocol=self.protocol)
 
-        curves = (compute_curves(df, spec, resolution) for df in self.data_)
-        self._write_cache(key, curves)
-        reader = self._read_cache(key)
-        self.curves_ = list(reader) if eager else reader
+        self.curve_path_ = path
+        self.curve_spec_ = spec
+        return self.curves_
 
-    def compute_cross_sections(self, key='xs',
+    def compute_cross_sections(self, key='curve_xs',
                                configs=None,
-                               density=1 / (1* 365),
-                               eager=False):
-        samples = (df.sample(fac=max(1 / len(df.index), density))
-                   for df in self.curves_)
-        self._write_cache(key, samples)
-        reader = self._read_cache(key)
-        self.cross_sections_ = list(reader) if eager else reader
+                               density=1 / (1 * 365)):
+        """Populate self.cross_sections_"""
+        path = (self.cache/key).with_suffix('pkl')
+
+        if path not in self.cache.iterdir():
+            with open(path, 'wb') as file:
+                for df in self.curves_:
+                    fac = max(1 / len(df.index), density)
+                    samples = df.sample(fac=fac)
+                    pickle.dump(samples, file, protocol=self.protocol)
+
+        self.cross_sections_path_ = path
+        return self.cross_sections_
+
+    def build_data_matrix(self, key='data_matrix'):
+        path = (self.cache/key).with_suffix('pkl')
+
+        if path not in self.cache.iterdir():
+            channel_names = self.meta_.channels.values
+            sparse_df = stack(self.cross_sections_, channel_names)
+            dense_df = sparse_df.to_dense()
+            with open(path, 'wb') as file:
+                pickle.dump(dense_df, file, protocol=self.protocol)
+
+        self.data_matrix_path_ = path
+        self._data_matrix = dense_df
+        return self.data_matrix_
+
+    def make_standardizer(self, configs=None, extra_std_kws=None):
+        """Generate and configure a DataframeStandardizer"""
+        cfgs = configs or self.configs
+        xtra = extra_std_kws or {}
+        for config in cfgs:
+            kws = config.std_kws.copy()
+            kws.update(xtra.get(config.mode, {}))
+            std.add_standardizer(config.mode, config.std_cls, **kws)
+        self._standardizer = std
+
+    def standardize_data_matrix(self, key='std_matrix'):
+        """Standardize self.data_matrix_ => self.standardized_data_"""
+        path = (self.cache/key).with_suffix('pkl')
+
+        if path not in self.cache.iterdir():
+            self.standardizer.fit(self.data_matrix_)
+            df = self.standardizer.transform(self.data_matrix_)
+            df.fillna(0.0, inplace=True)
+            with open(path, 'wb') as file:
+                pickle.dump(df, file, protocol=self.protocol)
+
+        self.standardized_data_path_ = path
+        self._standardized_data = df
+        return self.standardized_data_
+
+    def learn_model(self, key='model', **model_kws):
+        """Populate self.model_ and fit with self.standardized_data_"""
+        path = (self.cache/key).with_suffix('pkl')
+
+        if path not in self.cache.iterdir():
+            model = IcaPhenotypeModel(**model_kws)
+            model.fit(self.standardized_data_)
+            with open(path, 'wb') as file:
+                pickle.dump(model, file, protocol=self.protocol)
+
+        self.model_path_ = path
+        self._model = model
+        return self.model_
+
+    def compute_expressions(self, key='expressions', freq='D', agg='max'):
+        path = (self.cache/key).with_suffix('pkl')
+        if path not in self.cache.iterdir():
+            with open(path, 'wb') as file:
+                for df in self.curves_:
+                    X = df.resample(freq, level='date').mean()
+                    X = self.standardizer_.transform(X.to_dense())
+                    X = self.model_.transform(X)
+                    if agg is not None:
+                        X = X.agg(post_agg_func)
+                    X.name = df.index.get_level_values('id')[0]
+                    pickle.dump(X, file, protocol=self.protocol)
+        self.expressions_path_ = path
+        return self.expressions_
+
+    def compute_trajectories(self, key='trajectories',
+                             configs=None,
+                             freq='6MS', agg='max'):
+        path = (self.cache/key).with_suffix('pkl')
+        if path not in self.cache.iterdir():
+            with open(path, 'wb') as file:
+                for expr in self.expressions_:
+                    df = expr.resample(freq, level='date').agg(agg)
+                    df.name = expr.name
+                    pickle.dump(df, file, protocol=self.protocol)
+        self.trajectories_path_ = path
+        return self.trajectories_

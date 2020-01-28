@@ -5,8 +5,23 @@ import collections
 
 
 class Config:
-    """Generic namespace for carrying around configuration data on a mode"""
-    def __init__(self, mode=None, data=None, meta=None,
+    """Generic namespace for carrying around configuration data on a mode.
+
+    Parameters
+    ----------
+    mode : str
+        The string name for the mode this instance configures.
+    data : Iterator
+    meta : Iterator
+    curve_cls : class
+    curve_kws : dict
+    std_cls : class
+    std_kws : dict
+        All default to None, so that instances may be instantiated but then
+        passed around different for configuration from other sources
+    """
+    def __init__(self, mode,
+                 data=None, meta=None,
                  curve_cls=None, std_cls=None,
                  curve_kws=None, std_kws=None):
         self.mode = mode
@@ -17,10 +32,16 @@ class Config:
         self.std_cls = std_cls
         self.std_kws = {} if std_kws is None else std_kws
 
+    def valid_source(self):
+        """Check if the instance is configured to be a data source"""
+        return None not in (self.data, self.meta)
+
     def curve_builder(self, **kws):
+        """Instantiate a curve builder class"""
         kwargs = collections.ChainMap(kws, self.curve_kws)
         return self.curve_cls(**kwargs)
 
     def standardizer(self, **kws):
+        """Instantiate a standardizer class"""
         kwargs = collections.ChainMap(kws, self.std_kws)
         return self.std_cls(**kwargs)

@@ -33,7 +33,8 @@ def make_meta_df(rows):
 
 
 def moded(mode, data):
-    """Utility function, cf. `aggregate_modes`"""
+    """Utility function, cf. `aggregate_data`"""
+    # Module level definition allows us to pickle aggregate_data
     for (ptid, date, channel, value) in data:
         yield (ptid, date, mode, channel, value)
 
