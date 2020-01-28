@@ -59,7 +59,7 @@ def stack(xs_iter, channels):
         ndx.extend(df.index.values)
 
     sparse_mat = scipy.sparse.coo_matrix((data, (i, j)),
-                                         shape=(i[-1] + 1, num_channels),
+                                         shape=(i[-1] + 1, n_channels),
                                          dtype=numpy.dtype('d'))
     sparse_df = pandas.SparseDataFrame(sparse_mat,
                                        default_fill_value=numpy.nan,

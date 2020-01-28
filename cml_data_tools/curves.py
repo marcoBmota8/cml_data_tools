@@ -45,14 +45,16 @@ def build_patient_curves(df, spec, resolution='D'):
         curves. See pandas Timeseries Offset Aliases for convenient ways to
         specify this. (Default 'D', which gives one - day resolution.)
     """
-    ptid = df.ptid[0]
+    ptid = df.ptid.values[0]
     grid = pd.date_range(df.date.min().floor('D'),
                          df.date.max().ceil('D'),
                          freq=resolution)
 
     curves = {}
     for mode, func in spec.items():
-        result = func(df[df.mode == mode], grid)
+        data = df.loc[df['mode'] == mode]
+        data = data.set_index('date')
+        result = func(data, grid)
         curves[mode] = result
     out = pd.concat(curves, axis=1, names=['mode', 'channel'])
     out = pd.concat([out], keys=[ptid], names=['id'], copy=False)
@@ -238,7 +240,7 @@ class CurveBuilder(collections.abc.Callable):
                 return super().__call__(filtered_data, grid, **kwargs)
         """
         curveset = {'date': grid}
-        for channel, df in data.groupby(by='name'):
+        for channel, df in data.groupby(by='channel'):
             curveset[channel] = self._build_single_curve(df, grid, **kwargs)
 
         curve_df = pd.DataFrame.from_dict(curveset)
@@ -401,7 +403,7 @@ class BinaryCurveBuilder(CurveBuilder):
         All input times are rounded to 'D' resolution.
 
         Args:
-            data: a pandas dataframe containing a column 'name' giving the
+            data: a pandas dataframe containing a column 'channel' giving the
                 channel name observed on that date, and a DatetimeIndex.
             grid: a pandas DatetimeIndex giving the times at which to
                 estimate the binary value.
@@ -584,7 +586,7 @@ class BmiCurveBuilder(RegressionCurveBuilder):
         All input times are rounded to 'D' resolution.
 
         Args:
-            data: a pandas dataframe containing columns 'name' (string),
+            data: a pandas dataframe containing columns 'channel' (string),
                 'value' (numeric), and 'date' (DateTimeIndex). Height must be
                 named 'Height' with values in cm. Weight must be named 'Weight'
                 with values in kg.
@@ -592,7 +594,7 @@ class BmiCurveBuilder(RegressionCurveBuilder):
                 estimate the values.
 
         Returns:
-            a pandas dataframe containing curves for the columns in 'name' with
+            a pandas dataframe containing curves for the columns in 'channel' with
                 an additional column named 'BMI'. All columns are calculated
                 using a RegressionCurveBuilder, with the exception of the `BMI`
                 column, which is computed directly from 'Height' and 'Weight'.

@@ -69,7 +69,8 @@ class DataframeStandardizer(BaseEstimator, TransformerMixin):
             # There's a different standardizer for each channel, but the
             # standardizer class and kwargs are specified per mode:
             standardizer, kwargs = self._standardizer_info[mode]
-            self._transformer[channel_name] = standardizer(**kwargs).fit(channel)
+            self._transformer[channel_name] = standardizer(**kwargs)
+            self._transformer[channel_name].fit(channel)
         return self
 
     def transform(self, X, y=None):

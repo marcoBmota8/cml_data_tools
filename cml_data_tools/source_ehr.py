@@ -14,14 +14,14 @@ META_COLS = ('mode', 'channel', 'description', 'fill')
 
 def make_data_df(rows):
     """Convert patient data tuple iterator to a DataFrame indexed by date"""
-    df = pandas.DataFrame.from_records(rows, columns=DATA_COLS)
+    df = pandas.DataFrame.from_records(list(rows), columns=DATA_COLS)
     df = df.infer_objects()
     if 'date' in df.columns and not df.date.isna().all():
-        df.date = pd.to_datetime(df.date,
-                                 infer_datetime_format=True,
-                                 errors='coerce')
+        df.date = pandas.to_datetime(df.date,
+                                     infer_datetime_format=True,
+                                     errors='coerce')
         df.dropna(subset=['date'], inplace=True)
-        df.set_index('date', inplace=True)
+        #df.set_index('date', inplace=True)
     return df
 
 

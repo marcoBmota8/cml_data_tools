@@ -85,4 +85,12 @@ configs = [
 ]
 
 if __name__ == '__main__':
-    experiment = Experiment(configs, loc='cache')
+    experiment = e = Experiment(configs, loc='cache')
+    experiment.fetch_data()
+    experiment.fetch_meta()
+    experiment.compute_curves()
+    experiment.compute_cross_sections()
+    experiment.make_standardizer()
+    experiment.build_data_matrix()
+    experiment.standardize_data_matrix()
+    experiment.learn_model(max_phenotypes=10, max_iter=100)

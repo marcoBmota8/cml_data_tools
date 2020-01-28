@@ -1,3 +1,4 @@
+import logging
 import pickle
 
 import numpy as np
@@ -26,6 +27,7 @@ class IcaPhenotypeModel(BaseEstimator, TransformerMixin):
         self.name_stem = name_stem
         self.max_phenotypes = max_phenotypes
         self.max_iter = max_iter
+        self.logger = logging.getLogger(self.__class__.__qualname__)
 
     def fit(self, X, y=None):
         """Learns phenotypes from data. Returns self.
@@ -53,32 +55,32 @@ class IcaPhenotypeModel(BaseEstimator, TransformerMixin):
         # So a column in A and a column in S are for a single phenotype.
 
         # splitting up to conserve memory.
-        log.info('Fitting ICA to a {} by {} matrix'.format(*X.shape))
+        self.logger.info('Fitting ICA to a {} by {} matrix'.format(*X.shape))
         self.ica.fit(X.values)
 
-        log.info('Computing S Matrix.')
+        self.logger.info('Computing S Matrix.')
         self._raw_expressions = pd.DataFrame(self.ica.transform(X.values),
                                              index=X.index,
                                              columns=self.phenotype_names)
-        log.info('Computing A Matrix.')
+        self.logger.info('Computing A Matrix.')
         self._raw_phenotypes = pd.DataFrame(self.ica.mixing_,
                                             index=self.channel_names,
                                             columns=self.phenotype_names)
 
-        log.info('Computing scale factors')
+        self.logger.info('Computing scale factors')
         self._compute_scale_factors(self._raw_phenotypes,
                                     self._raw_expressions)
 
-        log.info('Computing centering information')
+        self.logger.info('Computing centering information')
         # for centering new data
         self._means = pd.Series(self.ica.mean_, index=self.channel_names)
 
-        log.info('Computing W Matrix.')
+        self.logger.info('Computing W Matrix.')
         self._raw_components = pd.DataFrame(self.ica.components_,
                                             index=self.phenotype_names,
                                             columns=self.channel_names)
 
-        log.info('Computing scaled results')
+        self.logger.info('Computing scaled results')
         self.phenotypes_ = self._scale_phenotypes(self._raw_phenotypes)
         self.expressions_ = self._scale_expressions(self._raw_expressions)
 
