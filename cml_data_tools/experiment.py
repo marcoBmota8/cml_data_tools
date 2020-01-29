@@ -190,9 +190,9 @@ class Experiment:
         path = (self.cache/key).with_suffix(self.suffix)
 
         if path not in self.cache.iterdir():
-            #self.standardizer_.fit(self.data_matrix_)
-            #df = self.standardizer_.transform(self.data_matrix_)
-            df = self.data_matrix_.copy()
+            self.standardizer_.fit(self.data_matrix_)
+            df = self.standardizer_.transform(self.data_matrix_)
+            #df = self.data_matrix_.copy()
             df.fillna(0.0, inplace=True)
             with open(path, 'wb') as file:
                 pickle.dump(df, file, protocol=self.protocol)
@@ -220,7 +220,7 @@ class Experiment:
         for df in self.curves_:
             X = df.resample(freq, level='date').mean()
             X = X.to_dense()
-            #X = self.standardizer_.transform(X.to_dense())
+            X = self.standardizer_.transform(X.to_dense())
             X = self.model_.transform(X)
             if agg is not None:
                 X = X.agg(agg)
