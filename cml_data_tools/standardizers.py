@@ -1,31 +1,8 @@
+import logging
+
 import numpy as np
-import numpy.random as nprnd
 import pandas as pd
-import scipy.stats as stats
-from scipy import interpolate
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.preprocessing import PowerTransformer
-
-
-class ChannelTransformer:
-    """Pickleable wrapper for interp1d, which is not picklable on its own"""
-    def __init__(self, xi, yi, **kwargs):
-        self.xi = xi
-        self.yi = yi
-        self.args = kwargs
-        self.f = interpolate.interp1d(xi, yi, **kwargs)
-
-    def __call__(self, xnew):
-        return self.f(xnew)
-
-    def __getstate__(self):
-        return self.xi, self.yi, self.args
-
-    def __setstate__(self, state):
-        self.xi = state[0]
-        self.yi = state[1]
-        self.args = state[2]
-        self.f = interpolate.interp1d(self.xi, self.yi, **self.args)
 
 
 class DataframeStandardizer(BaseEstimator, TransformerMixin):
@@ -41,14 +18,12 @@ class DataframeStandardizer(BaseEstimator, TransformerMixin):
     Usage
     -----
     >>> dfs = DataframeStandardizer()
-    >>> dfs.add_standardizer('Phecodes', PpfStandardizer(
-    ...     lambda x: stats.lognorm.ppf(x, s=1), n_quantiles=1000))
-    >>> dfs.add_standardizer('Lab Tests', PpfStandardizer(
-    ...     stats.norm.ppf, n_quantiles=1000))
+    >>> # Add some standardizers...
     >>> dfs.add_standardizer('Medications', lambda x: 4 * x)
+    >>> # Fit and transform
     >>> dfs.fit(X)
     >>> transformed = dfs.transform(X)
-    >>> new_transformed = dfss.transform(new_X)
+    >>> new_transformed = dfs.transform(new_X)
     """
     def __init__(self):
         self._transformer = {}
@@ -93,6 +68,9 @@ class DataframeStandardizer(BaseEstimator, TransformerMixin):
             X.loc[:, col_name] = result
         return X
 
+    def inverse_transform_label(self, name, delta):
+        return self._transformer[name].inverse_transform_label(delta=delta)
+
     def add_standardizer(self, mode, standardizer, **kwargs):
         """Add a standardizer for a given mode of data.
 
@@ -125,23 +103,9 @@ class DataframeStandardizer(BaseEstimator, TransformerMixin):
             self._transformer[channel_name].scale = scales[mode]
 
 
-class LinearStandardizer(BaseEstimator, TransformerMixin):
-    """A simple transformer that scales and offsets the input. This
-    standardizer is non-data dependent.
-
-    Parameters
-    ----------
-    scale : float (default 1.0)
-        Constant scale factor by which to multiply each element
-    offset : float (double 0.0)
-        Constant offset to add to each element (default 0).
-    """
-    def __init__(self, scale=1.0, offset=0):
-        self.offset = offset
-        self.scale = scale
-
+class SeriesStandardizer(BaseEstimator, TransformerMixin):
     def fit(self, series):
-        """Fits a standardization function. Returns self.
+        """Fits a standardization function.
 
         The fitted function transforms an input data series into a specified
         output space. A simple example would be a statistical standardizer that
@@ -157,9 +121,9 @@ class LinearStandardizer(BaseEstimator, TransformerMixin):
         Arguments
         ---------
         series : pandas.Series
-            Contains data from which to learn the transforming function
+            Contains data from which to learn the transforming function.
         """
-        return self
+        raise NotImplementedError
 
     def transform(self, series):
         """Transforms the series by the previously - fit function.
@@ -167,237 +131,185 @@ class LinearStandardizer(BaseEstimator, TransformerMixin):
         Arguments
         ---------
         series : pandas.Series
-
-        Returns
-        -------
-        pandas.Series
+            Contains data to be transformed.
         """
-        return self.scale * series + self.offset
+        raise NotImplementedError
 
+    def inverse_transform(self, series):
+        """Reverses the transform of the fitted function.
 
-class YeoJohnsonStandardizer(LinearStandardizer):
-    """Creates a Yeo-Johnson transformer.
-
-    Transforms the data x to a near-standard-normal transformation with the
-    Yeo-Johnson transform. If x is all positive, this is equivalent to a
-    Box-Cox transform.
-
-    This is useful for lab values, which are mostly log normal but with
-    different parameterizations. Some labs are mostly normal to begin with, and
-    others are highly skewed.
-
-    An alternative to this class might be to use the PpfStandardizer with a
-    standard normal distribution, but that has been found to amplify
-    floating-point quantization noise if the original values are heavily
-    discretized (such as x \in {0.0, 0.1, 0.2, 0.3, ... 1.0}). When curves are
-    created from these values, even if they are constant for a given patient,
-    quantization noise can easily result. Yeo-Johnson doesn't have that
-    problem, but the tradeoff is that it doesn't reign in outliers the same way
-    that a PpfStandardizer would do. Yeo-Johnson also keeps bimodal
-    distributions bimodal, which could be a good thing in some circumstances.
-
-    See: Yeo I-K, Johnson RA. A New Family of Power Transformations to Improve
-    Normality or Symmetry. Biometrika. 2000;87(4):954–9.
-
-    This transformer falls back to an identity transformer
-    (LinearStandardizer(offset=0, scale=1)) if all values are NaN, and to
-    LinearStandardizer(offset=-x, scale=1) if all values are extremely close to
-    x.
-    """
-    def fit(self, series):
-        # Use LinearStandardizer as placeholder if all NaN
-        if series.isna().all():
-            self._transformer = LinearStandardizer()
-
-        # Use LinearStandardizer if all values are basically the same.
-        else:
-            hi = series.max()
-            lo = series.min()
-            if hi == 0 or ((hi - lo) / hi) < 1.0e-6:
-                self._transformer = LinearStandardizer(offset=-hi, scale=1)
-            else:
-                self._transformer = PowerTransformer(method='yeo-johnson',
-                                                     standardize=True,
-                                                     copy=True)
-        # Standardizers are designed to work separately on each series in the
-        # DataFrame, but PowerTransformer is designed to handle each column
-        # separately when you pass the whole 2-d array. It therefore expects a
-        # 2-d input. So we have to do this (presumably) inefficiently by
-        # reshaping each series as a 2-d ndarray, and then putting it back into
-        # a series in the `transform` method below.
-        self._transformer.fit(series.values.reshape(-1, 1))
-        return self
-
-    def transform(self, series):
-        view = series.values.reshape(-1, 1)
-        vals = super().transform(self._transformer.transform(view))
-        vals = vals.flatten()
-        return pd.Series(vals, name=series.name, index=series.index)
-
-
-class LogStandardizer(LinearStandardizer):
-    """Creates a standardized log transformer.
-
-    Transforms the data x to scale * xt, where
-    xt = post_scale_factor * log10(1 + pre_scale_factor * x). If
-    post_scale_factor is None (default), it is chosen such that mean(xt) = 1
-    for nonzero xt. This preserves the fact that unobserved values
-    can be imputed to zero, and scales things compatible with the standard
-    normal. The `pre_scale_factor` transforms the units of x if necessary, so
-    that 1 + x is a minimal change and can be thought of as Bayesian
-    smoothing. The default of pre_scale_factor=20*365.25 is intended for use
-    with event intensities, which are transformed from events per day to events
-    per 20 years, so the '1 +' acts like a baseline rate of 1 event per 20
-    years (with 20 years being the approximate typical length of a long
-    record).
-
-    This is useful for event intensities, which tend to follow a lognormal
-    distribution, but the long tail overwhelms the variables that follow a
-    normal distribution.
-
-    Then the whole thing is scaled by `scale`, consistent with all other
-    standardizers.
-    """
-    def __init__(self, pre_scale_factor=20*365.25,
-                 post_scale_factor=None,
-                 scale=1.0, offset=0.0):
-        super().__init__(scale=scale, offset=offset)
-        self.pre_scale_factor = pre_scale_factor
-        self.post_scale_factor = post_scale_factor
-
-    def fit(self, series):
-        xt = np.log10(1 + self.pre_scale_factor * series)
-        if self.post_scale_factor is None:
-            xt_mean = xt.mean()
-            if xt_mean == 0:
-                self.post_scale_factor = 1
-            else:
-                self.post_scale_factor = 1 / xt_mean
-        return self
-
-    def transform(self, series):
-        x = 1 + self.pre_scale_factor * series
-        x = np.log10(x) / self.scale
-        return super().transform(x)
-
-
-class SquaredStandardizer(LinearStandardizer):
-    """Creates a squared transformer.
-
-    Transforms the data x to xt = (scale * x^2) + offset. This is useful for
-    variables like age, where the difference between 70 and 80 is much more
-    important than the difference between 20 and 30.
-    """
-    def transform(self, series):
-        return super().transform(np.square(series))
-
-
-class PpfStandardizer(LinearStandardizer):
-    """A distribution - based series standardizer.
-
-    The standardization happens(at least conceptually) in two steps:
-    1) Transform the series to its quantiles(in [0, 1])
-
-    2) Transform those quantiles to standard distribution values, using the
-        specified output distribution ppf.
-
-    A ppf(percent point function) is the inverse cdf, mapping from quantile in
-    [0, 1] to the distribution support domain(usually[-Inf, Inf] or [0,
-    Inf]). You can think of it as the "output distribution" of the
-    standardizer. Usual practice would be to use the parametric distribution
-    that is as close as possible to your actual data distribution.
-
-    This is a standardization method that produces comparable ranges in each
-    column, but is robust to extreme outliers. It may distort relationships
-    between columns if the output distribution is very different from the input
-    distribution. It maintains the rank order of data within a column.
-
-    The final transform function computed by self.fit() is a simple
-    interpolated lookup, with quantiles of the series passed to self.fit()
-    mapped to the values of the specified ppf output distribution. The
-    granularity of this lookup is specified with the n_quantiles parameter.
-
-    Usage
-    -----
-    >>> # A standardizer that transforms the input data into a standard
-    >>> # lognormal distribution would be constructed as follows:
-    >>> ps=PpfStandardizer(lambda x: stats.lognorm.ppf(x, s=1),
-    ...                    n_quantiles=1000)
-    >>> for series in X:
-    ...     transformer[series] = ps.fit(X[series])
-    ...     transformed = transformer[series].transform(X[series])
-    ... new_transformed = transformer[new_series.name].tranform(new_series)
-
-    Arguments
-    ---------
-    output_distribution : callable
-        A percent point function (aka inverse cdf) that maps [0,1] onto the
-        desired data space
-    n_quantiles : int
-        The number of quantiles to compute for the transform function (default
-        1000). The larger this number, the smoother and more accurate the
-        transform, but the slower and larger the transformer.
-    """
-    def __init__(self, output_distribution, n_quantiles=1000,
-                 scale=1.0, offset=0.0):
-        super().__init__(scale=scale, offset=offset)
-        self.n_quantiles = n_quantiles
-        self.ppf = output_distribution
-        self._transformer = None
-
-    def fit(self, series):
-        sample = self._subsample(series, self.n_quantiles)
-
-        # sample_size may be less than requested, if there was not enough data
-        sample_size = len(sample)
-
-        # divide by sample_size + 1 because ranks begin at 1
-        quantiles = (stats.rankdata(sample, method='average')
-                     / (sample_size + 1))
-
-        z = self.ppf(quantiles)
-        zmin = np.min(z)
-        zmax = np.max(z)
-
-        self._transformer = ChannelTransformer(sample, z,
-                                               fill_value=(zmin, zmax),
-                                               bounds_error=False,
-                                               assume_sorted=False)
-        return self
-
-    def transform(self, series):
-        return super().transform(self._transformer(series))
-
-    @staticmethod
-    def _subsample(series, sample_size):
-        """Randomly downsample `series`.
-
-        Samples uniformly without replacement from the non-NaN values of
-        `series`.
+        Usage
+        -----
+        >>> std = SeriesStandardizer()
+        >>> std.fit(my_series)
+        >>> transformed_series = std.transform(my_series)
+        >>> recovered_series = std.inverse_transform(transformed_series)
+        >>> all(recovered_series == my_series)
+        True
 
         Arguments
         ---------
         series : pandas.Series
-        sample_size : int
-            the requested number of elements of `series` to sample at random.
-
-        Returns
-        -------
-        pandas.Series
-            A series containing the randomly sampled elements. The size of this
-            series is at most the number of non-NaN values in `series`,
-            regardless of the value of `sample_size`.
+            Contains data to be inverse transformed.
         """
-        # sample without replacement from the non-nan values.
-        valid_values = series[series.notna()].values
+        raise NotImplementedError
 
-        if valid_values.size == 0:
-            valid_values = np.zeros(3)
+    def inverse_transform_label(self, delta, spec='+'):
+        """Provides the meaning of `delta` in the original space, with format
+        `spec`.
 
-        sample_size = min(sample_size, len(valid_values))
-        sample = nprnd.choice(valid_values, size=sample_size, replace=False)
+        This is for use in phenotype plots. For most transforms, `delta` in the
+        transformed space is simply scaled to the original space and given an
+        additive label. If a logarithmic transform is part of the transform,
+        then `delta` is appropriately scaled and given a multiplicative label.
 
-        # Add an additional minimum and maximum value, so that the average rank
-        # of the duplicated values at each end will produce a cdf other than 0
-        # or 1, which map to -inf, inf and cause problems.
-        return np.append(sample, (min(sample), max(sample)))
+        Examples
+        --------
+        >>> # If `s` transforms by scaling 2x:
+        >>> s.inverse_transform_label(1.0)
+        "+2.0"
+        >>> s.inverse_transform_label(-1.0)
+        "-2.0"
+
+        >>> # If `s` transforms by 3 * log10(x) - 2:
+        >>> s.inverse_transform_label(1.0)
+        "*2.15"   # i.e. "+115%"
+        >>> s.inverse_transform_label(-1.0)
+        "*0.464"  # i.e. "-53.6%"
+        """
+        raise NotImplementedError
+
+    def _inverse_transform_difference(self, delta, anchor=0):
+        orig = self.inverse_transform(pd.Series([anchor, anchor + delta]))
+        return orig[1] - orig[0]
+
+    def _inverse_transform_ratio(self, delta, anchor=1):
+        orig = self.inverse_transform(pd.Series([anchor, anchor + delta]))
+        return orig[1] / orig[0]
+
+
+class LinearStandardizer(SeriesStandardizer):
+    """A simple transformer that scales and offsets the input. This
+    standardizer is non-data dependent.
+
+    Parameters
+    ----------
+    scale : float (default 1.0)
+        Constant scale factor by which to multiply each element
+    offset : float (double 0.0)
+        Constant offset to add to each element (default 0).
+    """
+    def __init__(self, scale=1.0, offset=0):
+        self.offset = offset
+        self.scale = scale
+
+    def fit(self, series):
+        return self
+
+    def transform(self, series):
+        return self.scale * series + self.offset
+
+    def inverse_transform(self, series):
+        return (series - self.offset) / self.scale
+
+    def inverse_transform_label(self, delta, spec='+.2f'):
+        orig_delta = self._inverse_transform_difference(delta)
+        label = f'{orig_delta:{spec}}'
+        return label
+
+
+class GelmanStandardizer(SeriesStandardizer):
+    """Subtracts the mean and divides by *2* stdevs. Optionally, takes the log
+    first.
+
+    As suggested in Gelman2008: Gelman, A. Scaling regression inputs by
+    dividing by two standard deviations Stat Med, Wiley Online Library, 2008,
+    27 , 2865-2873.
+    """
+    def __init__(self, log_transform=False, eps=0):
+        self.eps = eps
+        self.log_transform = log_transform
+
+    def fit(self, series):
+        x = np.log10(series + self.eps) if self.log_transform else series
+        self.mean_ = x.mean()
+        self.stdev_ = x.std(ddof=0)
+        return self
+
+    def transform(self, series):
+        x = np.log10(series + self.eps) if self.log_transform else series
+        x = (x - self.mean_) / (2 * self.stdev_)
+        return x
+
+    def inverse_transform(self, series):
+        x = series * (2 * self.stdev_) + self.mean_
+        x = np.power(10, x) - self.eps if self.log_transform else x
+        return x
+
+    def inverse_transform_label(self, delta, spec=None):
+        if self.log_transform:
+            orig_frac = self._inverse_transform_ratio(delta)
+            if spec is None:
+                spec = '.2f'
+            label = f'x{orig_frac:{spec}}'
+        else:
+            orig_delta = self._inverse_transform_difference(delta)
+            if spec is None:
+                spec = '+.2f'
+            label = f'{orig_delta:{spec}}'
+        return label
+
+
+class LogGelmanStandardizerWithFallbacks(SeriesStandardizer):
+    """Creates a standardized log transformer, falling back to:
+
+    * LinearStandardizer(), i.e. identity, if all NaN
+    * LinearStandardizer(offset=-series.min), i.e. offset to zero, if all are
+      constant or nearly constant
+    * LogGelmanStandardizer(log_transform=False) if more than 1% negative
+    * LogGelmanStandardizer(log_transform=True) otherwise
+    """
+    def __init__(self, eps=0):
+        self.eps = eps
+        self.log = logging.getLogger(self.__class__.__name__)
+
+    def fit(self, series):
+        # Use LinearStandardizer as placeholder if all NaN
+        if (series.isna().all()):
+            self.log.info(f'Series {series.name} is all NaN. '
+                          f'Using identity standardizer instead.')
+            self._transformer = LinearStandardizer()
+
+        # Use LinearStandardizer if all values are basically the same.
+        elif ((series.max() - series.min()) < 1e-6 *
+              (series.max() + series.min())):
+            self.log.info(f'Series {series.name} is nearly constant '
+                          f'(value: {(series.min() + series.max()) / 2:.2g}, '
+                          f'delta: {series.max() - series.min():.2g}). '
+                          f'Using offset standardizer instead.')
+            self._transformer = LinearStandardizer(offset=-series.min())
+
+        # Use Gaussian 2sd standardizer if there are more than a few negatives
+        elif (series < 0).sum() > 0.01 * series.size:
+            num_negative = (series < 0).sum()
+            num_total = series.size
+            self.log.info(f'Series {series.name} has {num_negative} '
+                          f'({num_negative / num_total:.1%}) negative values. '
+                          f'Using Gelman standardizer instead.')
+            self._transformer = GelmanStandardizer(log_transform=False)
+
+        else:
+            self._transformer = GelmanStandardizer(log_transform=True,
+                                                   eps=self.eps)
+
+        self._transformer.fit(series)
+        return self
+
+    def transform(self, series):
+        return self._transformer.transform(series)
+
+    def inverse_transform(self, series):
+        return self._transformer.inverse_transform(series)
+
+    def inverse_transform_label(self, delta, spec=None):
+        return self._transformer.inverse_transform_label(delta, spec=spec)
