@@ -32,7 +32,7 @@ configs = [
     Config(
         mode='medication',
         data=DataSource('cml_test_medication', sd_access.connect),
-        meta=MetaSource('cml_test_medication', sd_access.connect),
+        meta=MetaSource('cml_test_medication_meta', sd_access.connect),
         curve_cls=BinaryCurveBuilder,
         std_cls=LinearStandardizer,
         std_kws={'scale': 1},
