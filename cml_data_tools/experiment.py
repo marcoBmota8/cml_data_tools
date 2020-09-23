@@ -8,7 +8,6 @@ import operator
 
 import pandas as pd
 
-from cml_data_tools.cross_sections import stack
 from cml_data_tools.curves import build_patient_curves
 from cml_data_tools.models import IcaPhenotypeModel
 from cml_data_tools.source_ehr import (make_data_df, make_meta_df,
@@ -176,8 +175,11 @@ class Experiment:
         if path not in self.cache.iterdir():
             channel_names = self.meta_[['mode', 'channel']]
             channel_names = pd.MultiIndex.from_frame(channel_names)
-            sparse_df = stack(self.cross_sections_, channel_names)
-            dense_df = sparse_df.to_dense()
+
+            dense_df = pd.concat([df.reindex(columns=channel_names)
+                                  for df in self.cross_sections_],
+                                 copy=False)
+
             with open(path, 'wb') as file:
                 pickle.dump(dense_df, file, protocol=self.protocol)
             self._data_matrix = dense_df
