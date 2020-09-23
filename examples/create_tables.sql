@@ -20,7 +20,7 @@ CREATE TABLE cml_test_measurement AS
 SELECT DISTINCT
     A.grid AS id,
     to_char(B.measurement_date, 'YYYY-MM-DD') AS date,
-    C.concept_name AS channel,
+    C.concept_code AS channel,
     last_value(B.value_as_number) OVER (
         PARTITION BY C.concept_code, date
         ORDER BY B.measurement_datetime ROWS
@@ -53,7 +53,7 @@ CREATE TABLE cml_test_condition AS
 SELECT DISTINCT
     A.grid AS id,
     to_char(B.condition_start_date, 'YYYY-MM-DD') AS date,
-    C.concept_name AS channel,
+    C.concept_code AS channel,
     '' AS value
 FROM OBESE_TINY A
 JOIN V_CONDITION_OCCURRENCE B ON (A.person_id = B.person_id)

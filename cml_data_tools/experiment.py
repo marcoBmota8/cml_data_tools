@@ -221,8 +221,7 @@ class Experiment:
         self.expressions_ = []
         for df in self.curves_:
             X = df.resample(freq, level='date').mean()
-            X = X.to_dense()
-            X = self.standardizer_.transform(X.to_dense())
+            X = self.standardizer_.transform(X)
             X = self.model_.transform(X)
             if agg is not None:
                 X = X.agg(agg)
