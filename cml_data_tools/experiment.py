@@ -10,6 +10,7 @@ import pandas as pd
 
 from cml_data_tools.curves import build_patient_curves
 from cml_data_tools.models import IcaPhenotypeModel
+from cml_data_tools.plotting import plot_phenotypes_to_file
 from cml_data_tools.source_ehr import (make_data_df, make_meta_df,
                                        aggregate_data, aggregate_meta)
 from cml_data_tools.standardizers import DataframeStandardizer
@@ -216,6 +217,14 @@ class Experiment:
 
         self.model_path_ = path
         return self.model_
+
+    def plot_model(self, key='phenotypes'):
+        path = (self.cache/key).with_suffix('.pdf')
+        plot_phenotypes_to_file(self.model_.phenotypes_,
+                                self.model_.expressions_,
+                                path,
+                                self.meta_,
+                                self.standardizer_)
 
     def compute_expressions(self, key='expressions', freq='6D', agg=None):
         self.expressions_ = []
