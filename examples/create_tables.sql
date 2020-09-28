@@ -13,6 +13,8 @@ DROP TABLE cml_test_medication_meta IF EXISTS;
 DROP TABLE cml_test_sex IF EXISTS;
 DROP TABLE cml_test_race IF EXISTS;
 DROP TABLE cml_test_age IF EXISTS;
+DROP TABLE cml_test_bmi IF EXISTS;
+DROP TABLE cml_test_ana IF EXISTS;
 
 
 -- Measurement
@@ -26,7 +28,7 @@ SELECT DISTINCT
         ORDER BY B.measurement_datetime ROWS
         BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
     ) AS value
-FROM OBESE_TINY A
+FROM SLE_IDS A
 JOIN V_MEASUREMENT B ON (A.person_id = B.person_id)
 JOIN MEASUREMENT_STATS C ON (B.measurement_concept_id = C.measurement_concept_id)
 WHERE (
@@ -55,7 +57,7 @@ SELECT DISTINCT
     to_char(B.condition_start_date, 'YYYY-MM-DD') AS date,
     C.concept_code AS channel,
     '' AS value
-FROM OBESE_TINY A
+FROM SLE_IDS A
 JOIN V_CONDITION_OCCURRENCE B ON (A.person_id = B.person_id)
 JOIN COUNTS C ON (B.condition_concept_id = C.concept_id)
 WHERE C.count >= 1000 AND C.domain_id = 'Condition'
@@ -79,7 +81,7 @@ SELECT DISTINCT
     to_char(B.drug_exposure_start_date, 'YYYY-MM-DD') AS date,
     C.concept_code AS channel,
     '' AS value
-FROM OBESE_TINY A
+FROM SLE_IDS A
 JOIN V_DRUG_EXPOSURE B ON (B.person_id = A.person_id)
 JOIN V_X_DRUG_EXPOSURE X ON (B.drug_exposure_id = X.drug_exposure_id)
 JOIN V_CONCEPT_ANCESTOR CA ON (CA.descendant_concept_id = B.drug_concept_id)
@@ -113,7 +115,7 @@ SELECT
     NULL AS date,
     C.concept_code AS channel,
     NULL AS value
-FROM OBESE_TINY A, V_PERSON P, V_CONCEPT C
+FROM SLE_IDS A, V_PERSON P, V_CONCEPT C
 WHERE P.person_id = A.person_id AND P.gender_concept_id = C.concept_id
 ORDER BY id;
 
@@ -129,7 +131,7 @@ SELECT
     END AS channel,
     NULL AS value
 FROM V_PERSON P
-RIGHT JOIN OBESE_TINY A ON (P.person_id = A.person_id)
+RIGHT JOIN SLE_IDS A ON (P.person_id = A.person_id)
 ORDER BY id;
 
 -- Age
@@ -140,5 +142,37 @@ SELECT
     'age' AS channel,
     DATE(P.birth_datetime) AS value
 FROM V_PERSON P
-RIGHT JOIN OBESE_TINY A ON (P.person_id = A.person_id)
+RIGHT JOIN SLE_IDS A ON (P.person_id = A.person_id)
 ORDER BY id;
+
+-- BMI
+CREATE TABLE cml_test_bmi AS
+SELECT DISTINCT
+    A.grid AS id,
+    to_char(B.measurement_date, 'YYYY-MM-DD') AS date,
+    'BMI' AS channel,
+    last_value(B.value_as_number) over (
+        PARTITION BY A.grid, B.measurement_date
+        ORDER BY B.measurement_date
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS value
+FROM SLE_IDS A
+JOIN V_MEASUREMENT B ON (A.person_id = B.person_id)
+JOIN V_X_VS_BMI_CLEAN c ON (B.measurement_id = C.measurement_id)
+WHERE B.value_as_number IS NOT NULL AND C.x_is_cleaned='Y'
+ORDER BY id, date;
+
+-- ANA
+CREATE TABLE cml_test_ana AS
+SELECT DISTINCT
+    P.grid AS id,
+    to_char(P.entry_date, 'YYYY-MM-DD') AS date,
+    'ANA titer' AS channel,
+    last_value(P.TITER) OVER (
+        PARTITION BY p.grid, date
+        ORDER BY P.TITER
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS value
+FROM ANA P
+RIGHT JOIN SLE_IDS G ON (P.person_id = G.person_id)
+ORDER BY id, date;

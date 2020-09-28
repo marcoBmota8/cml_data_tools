@@ -12,16 +12,24 @@ DATA_COLS = ('ptid', 'date', 'mode', 'channel', 'value')
 META_COLS = ('mode', 'channel', 'description', 'fill')
 
 
-def make_data_df(rows):
-    """Convert patient data tuple iterator to a DataFrame indexed by date"""
+def drop_unparseable_dates(df):
+    """
+    If the df has a date column with non-null values, convert it to pandas
+    datetime objects are drop any rows which fail to convert.
+    """
+    if 'date' in df.columns and not df['date'].isna().all():
+        df['date'] = pandas.to_datetime(df['date'],
+                                        infer_datetime_format=True,
+                                        errors='coerce')
+        df.dropna(subset=['date'], inplace=True)
+    return df
+
+
+def make_data_df(rows, drop_dates_by='mode'):
+    """Convert patient data tuple iterator to DataFrame"""
     df = pandas.DataFrame.from_records(list(rows), columns=DATA_COLS)
     df = df.infer_objects()
-    if 'date' in df.columns and not df.date.isna().all():
-        df.date = pandas.to_datetime(df.date,
-                                     infer_datetime_format=True,
-                                     errors='coerce')
-        df.dropna(subset=['date'], inplace=True)
-        #df.set_index('date', inplace=True)
+    df = df.groupby(by=drop_dates_by).apply(drop_unparseable_dates)
     return df
 
 

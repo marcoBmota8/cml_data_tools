@@ -75,18 +75,26 @@ configs = [
         std_cls=LogGelmanStandardizerWithFallbacks,
         std_kws={'eps': 1e-6},
     ),
-    #Config(
-    #    mode='surgical_cpt',
-    #    data=DataSource('cml_20_cpt', sd_access.connect),
-    #    meta=MetaSource('cml_20_cpt_meta', sd_access.connect),
-    #    curve_cls=LogCumulativeCurveBuilder,
-    #    std_cls=LogStandardizer,
-    #    std_kws={'pre_scale_factor': 1},
-    #),
+    Config(
+        mode='bmi',
+        data=DataSource('cml_test_bmi', sd_access.connect),
+        meta=(('BMI', 'Clean BMI', 26.12), ),
+        curve_cls=RegressionCurveBuilder,
+        std_cls=GelmanStandardizer,
+        std_kws={'log_transform': True, 'eps': 0},
+    ),
+    Config(
+        mode='ANA',
+        data=DataSource('cml_test_ana', sd_access.connect),
+        meta=(('ANA titer', 'ANA titer', 8.0), ),
+        curve_cls=RegressionCurveBuilder,
+        std_cls=GelmanStandardizer,
+        std_kws={'log_transform': True, 'eps': 0},
+    ),
 ]
 
 if __name__ == '__main__':
-    experiment = e = Experiment(configs, loc='cache')
+    experiment = e = Experiment(configs, loc='/hd1/stilljm/cml_test_cache')
     experiment.fetch_data()
     experiment.fetch_meta()
     experiment.compute_curves()
@@ -94,6 +102,6 @@ if __name__ == '__main__':
     experiment.make_standardizer()
     experiment.build_data_matrix()
     experiment.standardize_data_matrix()
-    experiment.learn_model(max_phenotypes=10, max_iter=100)
-    experiment.compute_expressions()
-    experiment.compute_trajectories()
+    experiment.learn_model(max_phenotypes=500, max_iter=1000, name_stem='SLE')
+    #experiment.compute_expressions()
+    #experiment.compute_trajectories()
