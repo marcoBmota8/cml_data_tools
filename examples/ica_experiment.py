@@ -103,5 +103,6 @@ if __name__ == '__main__':
     experiment.build_data_matrix()
     experiment.standardize_data_matrix()
     experiment.learn_model(max_phenotypes=500, max_iter=1000, name_stem='SLE')
+    experiment.plot_model()
     #experiment.compute_expressions()
     #experiment.compute_trajectories()

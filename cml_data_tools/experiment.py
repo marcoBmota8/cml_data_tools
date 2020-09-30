@@ -191,11 +191,10 @@ class Experiment:
     def standardize_data_matrix(self, key='std_matrix'):
         """Standardize self.data_matrix_ => self.standardized_data_"""
         path = (self.cache/key).with_suffix(self.suffix)
+        self.standardizer_.fit(self.data_matrix_)
 
         if path not in self.cache.iterdir():
-            self.standardizer_.fit(self.data_matrix_)
             df = self.standardizer_.transform(self.data_matrix_)
-            #df = self.data_matrix_.copy()
             df.fillna(0.0, inplace=True)
             with open(path, 'wb') as file:
                 pickle.dump(df, file, protocol=self.protocol)

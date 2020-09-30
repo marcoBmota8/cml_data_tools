@@ -2,6 +2,7 @@
 Tools for plotting objects
 """
 import matplotlib.pyplot as plt
+import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
 
 
@@ -13,14 +14,11 @@ def plot_phenotypes_to_file(phenotypes, expressions, filepath, channel_data,
     # sorted_index = expressions[expressions.abs() >
     #                            0.3].count().sort_values(ascending=False).index
     sorted_index = phenotypes.columns
-    name_dict = {
-        tup.Index: tup.description
-        for tup in channel_data.itertuples()
-    }
+    name_dict = {(t.mode, t.channel): t.description
+                 for t in channel_data.itertuples()}
 
     with PdfPages(filepath) as pdf:
         for pt in sorted_index:
-            log.info(f'Plotting phenotype {pt}.')
             plot_phenotype(phenotypes[pt],
                            20,
                            expressions[pt],
