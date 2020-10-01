@@ -46,7 +46,12 @@ SELECT
     concept_name AS description,
     p50 AS fill
 FROM MEASUREMENT_STATS
-WHERE count >= 1000
+WHERE (
+    count >= 1000
+    AND channel != '29463-7'
+    AND channel != '8302-2'
+    AND channel != '39156-5'
+)
 ORDER BY channel;
 
 
