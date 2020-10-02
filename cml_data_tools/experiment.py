@@ -180,6 +180,7 @@ class Experiment:
             dense_df = pd.concat([df.reindex(columns=channel_names)
                                   for df in self.cross_sections_],
                                  copy=False)
+            dense_df = dense_df.dropna(axis='columns', how='all')
 
             with open(path, 'wb') as file:
                 pickle.dump(dense_df, file, protocol=self.protocol)
@@ -194,8 +195,21 @@ class Experiment:
         self.standardizer_.fit(self.data_matrix_)
 
         if path not in self.cache.iterdir():
+            # Standardize data matrix
             df = self.standardizer_.transform(self.data_matrix_)
-            df.fillna(0.0, inplace=True)
+
+            # Meta has cols 'mode', 'channel', 'description', 'fill'
+            # To do the align below we need 'mode' & 'channel' to be the index
+            # (since these are the columns of the data matrix)
+            meta = self.meta_.set_index(['mode', 'channel'])
+            fill = pd.DataFrame(meta['fill']).transpose()
+
+            # NOTE: This step will drop channels present in the channel
+            # metadata but not present in the actual data
+            fill, _ = fill.align(self.data_matrix_, join='right', axis=1)
+            fill_series = self.standardizer_.transform(fill).loc['fill']
+            df = df.fillna(fill_series)
+
             with open(path, 'wb') as file:
                 pickle.dump(df, file, protocol=self.protocol)
             self._standardized_data = df

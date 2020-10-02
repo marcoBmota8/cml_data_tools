@@ -14,7 +14,7 @@ from cml_data_tools.standardizers import *
 
 configs = [
     Config(
-        mode='measurement',
+        mode='Measurements',
         data=DataSource('cml_test_measurement', sd_access.connect),
         meta=MetaSource('cml_test_measurement_meta', sd_access.connect),
         curve_cls=RegressionCurveBuilder,
@@ -22,7 +22,7 @@ configs = [
         std_kws={'eps': 1e-6},
     ),
     Config(
-        mode='condition',
+        mode='Conditions',
         data=DataSource('cml_test_condition', sd_access.connect),
         meta=MetaSource('cml_test_condition_meta', sd_access.connect),
         curve_cls=IntensityCurveBuilder,
@@ -30,7 +30,7 @@ configs = [
         std_kws={'eps': 1e-6},
     ),
     Config(
-        mode='medication',
+        mode='Medications',
         data=DataSource('cml_test_medication', sd_access.connect),
         meta=MetaSource('cml_test_medication_meta', sd_access.connect),
         curve_cls=BinaryCurveBuilder,
@@ -38,7 +38,7 @@ configs = [
         std_kws={'scale': 1},
     ),
     Config(
-        mode='race',
+        mode='Race',
         data=DataSource('cml_test_race', sd_access.connect),
         meta=(
             ('W', 'White Race', 0),
@@ -56,7 +56,7 @@ configs = [
         std_kws={'scale': 1},
     ),
     Config(
-        mode='sex',
+        mode='Sex',
         data=DataSource('cml_test_sex', sd_access.connect),
         meta=(
             ('M', 'Male Sex', 0),
@@ -68,7 +68,7 @@ configs = [
         std_kws={'scale': 1},
     ),
     Config(
-        mode='age',
+        mode='Age',
         data=DataSource('cml_test_age', sd_access.connect),
         meta=(('age', 'Age', 0), ),
         curve_cls=AgeCurveBuilder,
@@ -76,7 +76,7 @@ configs = [
         std_kws={'eps': 1e-6},
     ),
     Config(
-        mode='bmi',
+        mode='Bmi',
         data=DataSource('cml_test_bmi', sd_access.connect),
         meta=(('BMI', 'Clean BMI', 26.12), ),
         curve_cls=RegressionCurveBuilder,
@@ -94,7 +94,12 @@ configs = [
 ]
 
 if __name__ == '__main__':
-    experiment = e = Experiment(configs, loc='/hd1/stilljm/cml_test_cache')
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--loc', default='.')
+    args = parser.parse_args()
+
+    experiment = e = Experiment(configs, loc=args.loc)
     experiment.fetch_data()
     experiment.fetch_meta()
     experiment.compute_curves()
