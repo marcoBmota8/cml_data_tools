@@ -196,23 +196,27 @@ class Experiment:
 
         if path not in self.cache.iterdir():
             # Standardize data matrix
-            df = self.standardizer_.transform(self.data_matrix_)
-
+            # NOTE: This step will drop channels that are constant or zero
+            # (i.e. uninformative) from the data matrix (the steps below will
+            # do the same to the metadata)
+            std_data = self.standardizer_.transform(self.data_matrix_)
             # Meta has cols 'mode', 'channel', 'description', 'fill'
             # To do the align below we need 'mode' & 'channel' to be the index
             # (since these are the columns of the data matrix)
             meta = self.meta_.set_index(['mode', 'channel'])
-            fill = pd.DataFrame(meta['fill']).transpose()
-
-            # NOTE: This step will drop channels present in the channel
-            # metadata but not present in the actual data
-            fill, _ = fill.align(self.data_matrix_, join='right', axis=1)
+            # An error such as
+            #   "TypeError: loop of ufunc does not support argument 0 of type"
+            #   "float which has no callable log10 method"
+            # Indicates that the series in the fill df have dtype "object,"
+            # they need to have a float dtype.
+            fill = pd.DataFrame(meta['fill']).transpose().astype(float)
+            fill, _ = fill.align(std_data, join='right', axis=1)
             fill_series = self.standardizer_.transform(fill).loc['fill']
-            df = df.fillna(fill_series)
+            std_data = std_data.fillna(fill_series)
 
             with open(path, 'wb') as file:
-                pickle.dump(df, file, protocol=self.protocol)
-            self._standardized_data = df
+                pickle.dump(std_data, file, protocol=self.protocol)
+            self._standardized_data = std_data
 
         self.standardized_data_path_ = path
         return self.standardized_data_

@@ -94,12 +94,7 @@ configs = [
 ]
 
 if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--loc', default='.')
-    args = parser.parse_args()
-
-    experiment = e = Experiment(configs, loc=args.loc)
+    experiment = e = Experiment(configs, loc='/hd1/stilljm/cml_tests/B')
     experiment.fetch_data()
     experiment.fetch_meta()
     experiment.compute_curves()
