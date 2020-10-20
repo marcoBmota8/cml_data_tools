@@ -102,6 +102,18 @@ class DataframeStandardizer(BaseEstimator, TransformerMixin):
             mode = channel_name[0]
             self._transformer[channel_name].scale = scales[mode]
 
+    def transformer_properties(self):
+        """Yields the mean and stdev of all fit transformers in this
+        DataframeStandardizer.  Requires fitting first.
+
+        Yields
+        ------
+        Tuple : [obj, float, float]
+            3-tuples of (channel key, mean, stdev)
+        """
+        for key, transformer in self._transformer.items():
+            yield (key, transformer.mean_, transformer.stdev_)
+
 
 class SeriesStandardizer(BaseEstimator, TransformerMixin):
     def fit(self, series):
@@ -179,6 +191,14 @@ class SeriesStandardizer(BaseEstimator, TransformerMixin):
         """
         raise NotImplementedError
 
+    @property
+    def mean_(self):
+        raise NotImplementedError
+
+    @property
+    def stdev_(self):
+        raise NotImplementedError
+
     def _inverse_transform_difference(self, delta, anchor=0):
         orig = self.inverse_transform(pd.Series([anchor, anchor + delta]))
         return orig[1] - orig[0]
@@ -202,6 +222,14 @@ class LinearStandardizer(SeriesStandardizer):
     def __init__(self, scale=1.0, offset=0):
         self.offset = offset
         self.scale = scale
+
+    @property
+    def mean_(self):
+        return self.offset
+
+    @property
+    def stdev_(self):
+        return self.scale
 
     def fit(self, series):
         return self
@@ -230,10 +258,18 @@ class GelmanStandardizer(SeriesStandardizer):
         self.eps = eps
         self.log_transform = log_transform
 
+    @property
+    def mean_(self):
+        return self._mean
+
+    @property
+    def stdev_(self):
+        return self._stdev
+
     def fit(self, series):
         x = np.log10(series + self.eps) if self.log_transform else series
-        self.mean_ = x.mean()
-        self.stdev_ = x.std(ddof=0)
+        self._mean = x.mean()
+        self._stdev = x.std(ddof=0)
         return self
 
     def transform(self, series):
@@ -272,6 +308,14 @@ class LogGelmanStandardizerWithFallbacks(SeriesStandardizer):
     def __init__(self, eps=0):
         self.eps = eps
         self.log = logging.getLogger(self.__class__.__name__)
+
+    @property
+    def mean_(self):
+        return self._transformer.mean_
+
+    @property
+    def stdev_(self):
+        return self._transformer.stdev_
 
     def fit(self, series):
         # Use LinearStandardizer as placeholder if all NaN
