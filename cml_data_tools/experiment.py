@@ -5,6 +5,7 @@ import collections
 import pathlib
 import pickle
 import operator
+from concurrent.futures import as_completed, ProcessPoolExecutor
 
 import pandas as pd
 
@@ -121,7 +122,8 @@ class Experiment:
     def compute_curves(self, key='curves',
                        configs=None,
                        resolution='D',
-                       extra_curve_kws=None):
+                       extra_curve_kws=None,
+                       n_cpu=0):
         """Populate self.curves_"""
         cfgs = configs or self.configs
         xtra = extra_curve_kws or {}
@@ -135,9 +137,23 @@ class Experiment:
 
         if path not in self.cache.iterdir():
             with open(path, 'wb') as file:
-                for df in self.data_:
-                    curves = build_patient_curves(df, spec, resolution)
-                    pickle.dump(curves, file, protocol=self.protocol)
+                # Parallel execution
+                if n_cpu > 0:
+                    with ProcessPoolExecutor(max_workers=n_cpu) as pool:
+                        futures = []
+                        for df in self.data_:
+                            futures.append(pool.submit(build_patient_curves,
+                                                       df, spec, resolution))
+                        for future in as_completed(futures):
+                            curves = future.result()
+                            pickle.dump(curves, file, protocol=self.protocol)
+                            futures.remove(future)
+                            del future
+                # Single core execution
+                else:
+                    for df in self.data_:
+                        curves = build_patient_curves(df, spec, resolution)
+                        pickle.dump(curves, file, protocol=self.protocol)
 
         self.curve_path_ = path
         self.curve_spec_ = spec
