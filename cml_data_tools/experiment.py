@@ -166,11 +166,13 @@ class Experiment:
         path = (self.cache/key).with_suffix(self.suffix)
 
         if path not in self.cache.iterdir():
+            rng = np.random.default_rng()
             with open(path, 'wb') as file:
                 for df in self.curves_:
-                    frac = max(1 / len(df.index), density)
-                    samples = df.sample(frac=frac)
-                    pickle.dump(samples, file, protocol=self.protocol)
+                    n = rng.binomial(len(df.index), density)
+                    if n > 0:
+                        samples = df.sample(n=n)
+                        pickle.dump(samples, file, protocol=self.protocol)
 
         self.cross_sections_path_ = path
         return self.cross_sections_
