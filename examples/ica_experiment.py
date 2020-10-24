@@ -2,13 +2,15 @@
 """
 Example application using ICA
 """
+import logging
 from pathlib import Path
 
 import sd_access
-from cml_data_tools.source_ehr import DataSource, MetaSource
 from cml_data_tools.config import Config
-from cml_data_tools.experiment import Experiment
 from cml_data_tools.curves import *
+from cml_data_tools.experiment import Experiment
+from cml_data_tools.pickle_cache import PickleCache
+from cml_data_tools.source_ehr import DataSource, MetaSource
 from cml_data_tools.standardizers import *
 
 
@@ -94,15 +96,27 @@ configs = [
 ]
 
 if __name__ == '__main__':
-    experiment = e = Experiment(configs, loc='/hd1/stilljm/cml_tests/B')
-    experiment.fetch_data()
-    experiment.fetch_meta()
-    experiment.compute_curves()
-    experiment.compute_cross_sections()
-    experiment.make_standardizer()
-    experiment.build_data_matrix()
-    experiment.standardize_data_matrix()
-    experiment.learn_model(max_phenotypes=500, max_iter=1000, name_stem='SLE')
-    experiment.plot_model()
+    import warnings
+    warnings.simplefilter('ignore')
+
+    cache = PickleCache(loc='/hd1/stilljm/cml_tests/A')
+    experiment = e = Experiment(configs, cache)
+    #experiment.fetch_data()
+    #experiment.fetch_meta()
+    #experiment.compute_curves(n_cpu=48)
+    #experiment.compute_curve_stats()
+    #experiment.compute_cross_sections()
+    #experiment.make_standardizer()
+    #experiment.build_data_matrix()
+    #experiment.standardize_data_matrix()
+    #experiment.learn_model(max_phenotypes=500, max_iter=1000, name_stem='SLE')
     #experiment.compute_expressions()
     #experiment.compute_trajectories()
+
+    for i in range(10):
+        key = f'xsections/xs_{i:03}'
+        logging.info(f'Computing cross sections at: {key}')
+        experiment.compute_cross_sections(key=key)
+
+    logging.info('plotting models')
+    experiment.plot_model()

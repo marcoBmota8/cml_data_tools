@@ -39,11 +39,24 @@ def to_dataframe(stats):
 
 def to_stats(curveset):
     """Helper function, converts dataframe of curves to stats on the curves"""
-    # List each op on its own line to make line_profiler output more useful
+    # .values is faster than .to_numpy(), although the effect is very small for
+    # the dataframe itself (it is mostly present in converting the columns)
     C = curveset.columns.values
-    M = curveset.mean().values
-    V = curveset.var(ddof=0).values
-    N = numpy.full_like(M, curveset.shape[0], dtype=numpy.int64)
+    x = curveset.values
+    M = numpy.nanmean(x, axis=0)
+    V = numpy.nanvar(x, axis=0)
+    N = numpy.full(M.shape, len(x), dtype=numpy.int64)
+    return NormStats(C, M, V, N)
+
+
+def to_stats_dropna(curveset):
+    M = curveset.mean().dropna()
+    V = curveset.var(ddof=0).dropna()
+    assert (M.index == V.index).all()
+    C = M.index.values
+    M = M.values
+    V = V.values
+    N = numpy.full_like(M, len(curveset), dtype=numpy.int64)
     return NormStats(C, M, V, N)
 
 
