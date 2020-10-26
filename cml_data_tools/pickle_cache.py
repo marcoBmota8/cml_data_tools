@@ -1,3 +1,4 @@
+import contextlib
 import pathlib
 import pickle
 
@@ -53,4 +54,14 @@ class PickleCache:
                     yield x
 
     def _make_path(self, key):
-        return (self.loc/key).with_suffix(self.suffix)
+        return (self.loc/key).resolve().with_suffix(self.suffix)
+
+    @contextlib.contextmanager
+    def relocate(self, temp_loc, exist_ok=True):
+        """Temporarily reset the location of the cache"""
+        temp_loc = pathlib.Path(temp_loc).resolve()
+        temp_loc.mkdir(exist_ok=exist_ok)
+        prev_loc = self.loc
+        self.loc = temp_loc
+        yield self
+        self.loc = prev_loc

@@ -99,24 +99,22 @@ if __name__ == '__main__':
     import warnings
     warnings.simplefilter('ignore')
 
-    cache = PickleCache(loc='/hd1/stilljm/cml_tests/A')
+    cache = PickleCache(loc='/hd1/stilljm/cml_tests/B')
     experiment = e = Experiment(configs, cache)
-    #experiment.fetch_data()
-    #experiment.fetch_meta()
-    #experiment.compute_curves(n_cpu=48)
-    #experiment.compute_curve_stats()
-    #experiment.compute_cross_sections()
-    #experiment.make_standardizer()
-    #experiment.build_data_matrix()
-    #experiment.standardize_data_matrix()
-    #experiment.learn_model(max_phenotypes=500, max_iter=1000, name_stem='SLE')
-    #experiment.compute_expressions()
-    #experiment.compute_trajectories()
+    experiment.fetch_data()
+    experiment.fetch_meta()
+    experiment.compute_curves(max_workers=48)
+    experiment.make_standardizer()
 
     for i in range(10):
-        key = f'xsections/xs_{i:03}'
-        logging.info(f'Computing cross sections at: {key}')
-        experiment.compute_cross_sections(key=key)
+        path = Path(cache.loc/f'segment_{i:03}')
+        with cache.relocate(path):
+            logging.info(f'Computing cross sections at: {key}')
+            experiment.compute_cross_sections(curves_key='../curves')
+            experiment.build_data_matrix(meta_key='../meta')
+            experiment.standardize_data_matrix(std_key='../standardizer',
+                                               meta_key='../meta')
+            experiment.learn_model()
 
     logging.info('plotting models')
     experiment.plot_model()

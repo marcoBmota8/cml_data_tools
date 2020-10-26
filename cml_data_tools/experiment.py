@@ -12,13 +12,13 @@ from concurrent.futures import as_completed, ProcessPoolExecutor, TimeoutError
 import numpy as np
 import pandas as pd
 
-from cml_data_tools import online_norm
 from cml_data_tools.curves import build_patient_curves
 from cml_data_tools.models import IcaPhenotypeModel
 from cml_data_tools.plotting import plot_phenotypes_to_file
 from cml_data_tools.source_ehr import (make_data_df, make_meta_df,
                                        aggregate_data, aggregate_meta)
-from cml_data_tools.standardizers import DataframeStandardizer
+from cml_data_tools.online_standardizer import (collect_curve_stats,
+                                                OnlineCurveStandardizer)
 
 
 def _drain_queue(q, timeout=None):
@@ -30,36 +30,25 @@ def _drain_queue(q, timeout=None):
         pass
 
 
-def _parallel_curve_gen(data, max_workers, spec, resolution):
+def _worker(df, spec, resolution, calc_stats):
+    curves = build_patient_curves(df, spec, resolution)
+    if calc_stats:
+        stats = collect_curve_stats(curves)
+    else:
+        stats = None
+    return curves, stats
+
+
+def _parallel_curve_gen(data, max_workers, spec, resolution, calc_stats):
     with ProcessPoolExecutor(max_workers=max_workers) as pool:
         futures = set()
         for df in data:
-            fut = pool.submit(build_patient_curves,
-                              df,
-                              spec=spec,
-                              resolution=resolution)
+            fut = pool.submit(_worker, df, spec, resolution, calc_stats)
             futures.add(fut)
             if len(futures) > 100:
                 yield from _drain_queue(futures, timeout=1)
         # Block until all futures arrive
         yield from _drain_queue(futures)
-
-
-def _collect_curve_stats(curve_df):
-    """Collect mean/var of curves and log10(curves)"""
-    n_pos = (curve_df > 0.0).sum()
-    stats = online_norm.to_stats(curve_df)
-    log10 = np.log10(curve_df)
-    log10 = log10.where(~np.isinf(log10))
-    extra = online_norm.to_stats_dropna(log10)
-    return n_pos, stats, extra
-
-
-def _update_curve_stats(A, B):
-    n_pos = A[0].add(B[0], fill_value=0.0)
-    stats = online_norm.update(A[1], B[1])
-    extra = online_norm.update(A[2], B[2])
-    return n_pos, stats, extra
 
 
 def _sample_from_curves(curves, density):
@@ -124,7 +113,8 @@ class Experiment:
 
     @cached_operation
     def compute_curves(self, key='curves', data_key='data', configs=None,
-                       resolution='D', extra_curve_kws=None, n_cpu=0):
+                       resolution='D', extra_curve_kws=None, max_workers=0,
+                       calc_stats=True, standardizer_key='curve_stats'):
         cfgs = configs or self.configs
         xtra = extra_curve_kws or {}
         spec = {}
@@ -135,25 +125,34 @@ class Experiment:
 
         data = self.cache.get_stream(data_key)
         if n_cpu > 0:
-            curves_iter = _parallel_curve_gen(data,
-                                              max_workers=n_cpu,
-                                              spec=spec,
-                                              resolution=resolution)
+            curves_iter = _parallel_curve_gen(data, max_workers, spec,
+                                              resolution, calc_stats)
         # Single core execution
         else:
-            curves_iter = (build_patient_curves(df, spec, resolution)
+            curves_iter = (_worker(df, spec, resolution, calc_stats)
                            for df in data)
+
+        def _intercept_stats(curves_iter):
+            stats = None
+            for curves, new in curves_iter:
+                if calc_stats:
+                    stats = update_curve_stats(stats, new)
+                yield curves
+
+            if calc_stats:
+                self.cache.set(curve_stats_key, stats)
+
         # Drives the iterators - i.e. this is when the work happens
-        self.cache.set_stream(key, curves_iter)
+        self.cache.set_stream(key, _intercept_stats(curves_iter))
 
     @cached_operation
     def compute_curve_stats(self, key='curve_stats', curves_key='curves'):
-        # TODO: speed this up
+        # Runs in serial
         curves = self.cache.get_stream(curves_key)
-        stats = _collect_curve_stats(next(curves))
+        stats = collect_curve_stats(next(curves))
         for curveset in curves:
-            new = _collect_curve_stats(curveset)
-            stats = _update_curve_stats(stats, new)
+            new = collect_curve_stats(curveset)
+            stats = update_curve_stats(stats, new)
         self.cache.set(key, stats)
 
     @cached_operation
@@ -165,16 +164,20 @@ class Experiment:
 
     @cached_operation
     def make_standardizer(self, key='standardizer',
+                          fit_from_stats=True,
+                          stats_key='curve_stats',
+                          data_key='data_matrix',
                           configs=None, extra_std_kws=None):
         cfgs = configs or self.configs
         xtra = extra_std_kws or {}
-        std = DataframeStandardizer()
+        stats = self.cache.get(stats_key)
+        std = OnlineCurveStandardizer(stats)
         for config in cfgs:
             kws = config.std_kws.copy()
             kws.update(xtra.get(config.mode, {}))
             std.add_standardizer(config.mode, config.std_cls, **kws)
-
-        # XXX: Fit the standardizer! Toggle from curves / some data matrix
+        # Fits on the previously computed curve stats
+        std.fit()
         self.cache.set(key, std)
 
     @cached_operation
@@ -186,8 +189,8 @@ class Experiment:
 
         cross_sections = self.cache.get_stream(xs_key)
         dense_df = pd.concat([df.reindex(columns=channel_names)
-                                for df in cross_sections],
-                                copy=False)
+                              for df in cross_sections],
+                             copy=False)
         dense_df = dense_df.dropna(axis='columns', how='all')
         self.cache.set(key, dense_df)
 
@@ -198,7 +201,6 @@ class Experiment:
                                 meta_key='meta'):
         standardizer = self.cache.get(std_key)
         data_matrix = self.cache.get(data_matrix_key)
-        standardizer.fit(data_matrix)
         # Standardize data matrix
         # NOTE: This step will drop channels that are constant or zero
         # (i.e. uninformative) from the data matrix (the steps below will
