@@ -18,6 +18,7 @@ from cml_data_tools.plotting import plot_phenotypes_to_file
 from cml_data_tools.source_ehr import (make_data_df, make_meta_df,
                                        aggregate_data, aggregate_meta)
 from cml_data_tools.online_standardizer import (collect_curve_stats,
+                                                update_curve_stats,
                                                 OnlineCurveStandardizer)
 
 
@@ -114,7 +115,7 @@ class Experiment:
     @cached_operation
     def compute_curves(self, key='curves', data_key='data', configs=None,
                        resolution='D', extra_curve_kws=None, max_workers=0,
-                       calc_stats=True, standardizer_key='curve_stats'):
+                       calc_stats=True, curve_stats_key='curve_stats'):
         cfgs = configs or self.configs
         xtra = extra_curve_kws or {}
         spec = {}
@@ -124,7 +125,7 @@ class Experiment:
             spec[config.mode] = func
 
         data = self.cache.get_stream(data_key)
-        if n_cpu > 0:
+        if max_workers > 0:
             curves_iter = _parallel_curve_gen(data, max_workers, spec,
                                               resolution, calc_stats)
         # Single core execution
@@ -134,9 +135,9 @@ class Experiment:
 
         def _intercept_stats(curves_iter):
             stats = None
-            for curves, new in curves_iter:
+            for curves, new_stats in curves_iter:
                 if calc_stats:
-                    stats = update_curve_stats(stats, new)
+                    stats = update_curve_stats(stats, new_stats)
                 yield curves
 
             if calc_stats:

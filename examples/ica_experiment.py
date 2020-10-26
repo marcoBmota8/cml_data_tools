@@ -109,7 +109,7 @@ if __name__ == '__main__':
     for i in range(10):
         path = Path(cache.loc/f'segment_{i:03}')
         with cache.relocate(path):
-            logging.info(f'Computing cross sections at: {key}')
+            logging.info(f'Computing cross sections at: {str(path)}')
             experiment.compute_cross_sections(curves_key='../curves')
             experiment.build_data_matrix(meta_key='../meta')
             experiment.standardize_data_matrix(std_key='../standardizer',

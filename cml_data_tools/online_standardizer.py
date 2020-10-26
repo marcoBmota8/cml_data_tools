@@ -1,6 +1,8 @@
 import collections
+
 import numpy as np
-from cml_data_tools import online_norm
+import pandas as pd
+
 from cml_data_tools.standardizers import (DataframeStandardizer,
                                           LinearStandardizer,
                                           GelmanStandardizer,
@@ -25,43 +27,92 @@ def collect_curve_stats(curves):
     N_tot = np.full(M.shape, len(X), dtype=np.int64)
     N_pos = (X > 0.0).sum(axis=0)
 
-    X_log = np.log10(X)
-    X_log[np.isinf(X_log)] = np.nan
-    M_log = np.nanmean(X_log, axis=0)
-    V_log = np.nanvar(X_log, axis=0)
+    log_X = np.log10(X)
+    log_X[np.isinf(log_X)] = np.nan
+    log_M = np.nanmean(log_X, axis=0)
+    log_V = np.nanvar(log_X, axis=0)
 
-    min_ = np.nanmin(X, axis=0)
-    max_ = np.nanmax(X, axis=0)
+    c_min = np.nanmin(X, axis=0)
+    c_max = np.nanmax(X, axis=0)
 
-    return CurveStats(C, N_tot, N_pos, M, V, M_log, V_log, min_, max_)
+    return CurveStats(C, N_tot, N_pos, M, V, log_M, log_V, c_min, c_max)
 
 
 def update_curve_stats(prev, curr):
     if prev is None:
         return curr
 
-    base_prev = (prev.channels, prev.base_mean, prev.base_var, prev.n_tot)
-    base_curr = (curr.channels, curr.base_mean, curr.base_var, curr.n_tot)
-    base = online_norm.update(base_prev, base_curr)
+    prev_chan, prev_n, prev_pos, prev_m, prev_v, prev_log_m, prev_log_v,\
+        prev_min, prev_max = prev
 
-    log10_prev = (prev.channels, prev.log10_mean, prev.log10_var, prev.n_tot)
-    log10_curr = (curr.channels, curr.log10_mean, curr.log10_var, curr.n_tot)
-    log10 = online_norm.update(log10_prev, log10_curr)
+    curr_chan, curr_n, curr_pos, curr_m, curr_v, curr_log_m, curr_log_v,\
+        curr_min, curr_max = curr
 
-    assert (base.channels == log10.channels).all()
-    assert (base.n == log10.n).all()
+    C, prev_idx, curr_idx = np.intersect1d(prev_chan, curr_chan,
+                                           assume_unique=True,
+                                           return_indices=True)
 
-    n_pos = prev.n_pos + curr.n_pos
-    assert n_pos.shape == base.channels.shape
+    cn = curr_n[curr_idx]
+    pn = prev_n[prev_idx]
+    N = pn + cn
+    cf = cn / N
+    pf = pn / N
 
-    curve_min = np.minimum(prev.curve_min, curr.curve_min)
-    assert curve_min.shape == base.channels.shape
+    # Calculate the updated values for basic mean / var
+    cm = curr_m[curr_idx]
+    cv = curr_v[curr_idx]
+    pm = prev_m[prev_idx]
+    pv = prev_v[prev_idx]
+    dx = cm - pm
+    M = pm + (cf * dx)
+    V = (pv * pf) + (cv * cf) + (pf * cf * dx * dx)
 
-    curve_max = np.maximum(prev.curve_max, curr.curve_max)
-    assert curve_max.shape == base.channels.shape
+    # Updated mean / var of log transformed
+    log_cm = curr_log_m[curr_idx]
+    log_cv = curr_log_v[curr_idx]
+    log_pm = prev_log_m[prev_idx]
+    log_pv = prev_log_v[prev_idx]
+    log_dx = log_cm - log_pm
+    log_M = log_pm + (cf * log_dx)
+    log_V = (log_pv * pf) + (log_cv * cf) + (pf * cf * log_dx * log_dx)
 
-    return CurveStats(base.channels, base.n, n_pos, base.mean, base.var,
-                      log10.mean, log10.var, curve_min, curve_max)
+    # Update num positive, max & min values
+    n_pos = prev_pos[prev_idx] + curr_pos[curr_idx]
+    c_max = np.maximum(prev_max[prev_idx], curr_max[curr_idx])
+    c_min = np.minimum(prev_min[prev_idx], curr_min[curr_idx])
+
+    # Mask for prev values not in current (i.e. unchanged vals)
+    p_mask = np.ones(prev_chan.shape, dtype=np.bool)
+    p_mask[prev_idx] = False
+
+    # Mask for curr values not in previous (i.e. unchanged vals)
+    c_mask = np.ones(curr_chan.shape, dtype=np.bool)
+    c_mask[curr_idx] = False
+
+    # Recombine the unchanged, updated, and new values
+    C = np.concatenate((C, prev_chan[p_mask], curr_chan[c_mask]))
+    N = np.concatenate((N, prev_n[p_mask], curr_n[c_mask]))
+    P = np.concatenate((n_pos, prev_pos[p_mask], curr_pos[c_mask]))
+    M = np.concatenate((M, prev_m[p_mask], curr_m[c_mask]))
+    V = np.concatenate((V, prev_v[p_mask], curr_v[c_mask]))
+    log_M = np.concatenate((log_M, prev_log_m[p_mask], curr_log_m[c_mask]))
+    log_V = np.concatenate((log_V, prev_log_v[p_mask], curr_log_v[c_mask]))
+    c_min = np.concatenate((c_min, prev_min[p_mask], curr_min[c_mask]))
+    c_max = np.concatenate((c_max, prev_max[p_mask], curr_max[c_mask]))
+
+    # Stay sorted by channel
+    sort = np.argsort(C)
+    C = C[sort]
+    N = N[sort]
+    P = P[sort]
+    M = M[sort]
+    V = V[sort]
+    log_M = log_M[sort]
+    log_V = log_V[sort]
+    c_min = c_min[sort]
+    c_max = c_max[sort]
+
+    return CurveStats(C, N, P, M, V, log_M, log_V, c_min, c_max)
 
 
 class OnlineCurveStandardizer(DataframeStandardizer):
@@ -78,7 +129,12 @@ class OnlineCurveStandardizer(DataframeStandardizer):
 
     def stats_as_df(self):
         if self.curve_stats is not None:
-            return online_norm.to_dataframe(self.curve_stats)
+            data = self.curve_stats._asdict()
+            index = data.pop('channels')
+            if isinstance(index[0], tuple):
+                index = pd.MultiIndex.from_tuples(index)
+            df = pd.DataFrame(data=data, index=index)
+            return df
 
     def fit(self, curves=None, y=None):
         # Hook to fit from curves given at last minute

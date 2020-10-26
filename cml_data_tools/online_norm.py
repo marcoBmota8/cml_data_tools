@@ -49,17 +49,6 @@ def to_stats(curveset):
     return NormStats(C, M, V, N)
 
 
-def to_stats_dropna(curveset):
-    M = curveset.mean().dropna()
-    V = curveset.var(ddof=0).dropna()
-    assert (M.index == V.index).all()
-    C = M.index.values
-    M = M.values
-    V = V.values
-    N = numpy.full_like(M, len(curveset), dtype=numpy.int64)
-    return NormStats(C, M, V, N)
-
-
 def update(prev, curr):
     """Updates a stats dataframe mean / variance with new values.
 
