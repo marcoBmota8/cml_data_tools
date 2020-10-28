@@ -61,6 +61,38 @@ def _sample_from_curves(curves, density):
             yield samples
 
 
+def _to_data_matrix(meta, cross_sections):
+    channels = meta[['mode', 'channel']]
+    channels = pd.MultiIndex.from_frame(channels)
+    dense_df = pd.concat([df.reindex(columns=channels)
+                          for df in cross_sections],
+                         copy=False)
+    dense_df = dense_df.dropna(axis='columns', how='all')
+    return dense_df
+
+
+def _to_std_data_matrix(meta, data_matrix, standardizer):
+    # Standardize data matrix
+    # NOTE: This step will drop channels that are constant or zero
+    # (i.e. uninformative) from the data matrix (the steps below will
+    # do the same to the metadata)
+    std_data = standardizer.transform(data_matrix)
+    # Meta has cols 'mode', 'channel', 'description', 'fill'
+    # To do the align below we need 'mode' & 'channel' to be the index
+    # (since these are the columns of the data matrix)
+    meta = meta.set_index(['mode', 'channel'])
+    # An error such as
+    #   "TypeError: loop of ufunc does not support argument 0 of type"
+    #   "float which has no callable log10 method"
+    # Indicates that the series in the fill df have dtype "object,"
+    # they need to have a float dtype.
+    fill = pd.DataFrame(meta['fill']).transpose().astype(float)
+    fill, _ = fill.align(std_data, join='right', axis=1)
+    fill_series = standardizer.transform(fill).loc['fill']
+    std_data = std_data.fillna(fill_series)
+    return std_data
+
+
 def _curve_expressions(curves, std, model, freq, agg):
     for df in curves:
         X = df.resample(freq, level='date').mean()
@@ -169,15 +201,10 @@ class Experiment:
                           stats_key='curve_stats',
                           data_key='data_matrix',
                           configs=None, extra_std_kws=None):
-        cfgs = configs or self.configs
-        xtra = extra_std_kws or {}
+        configs = configs or self.configs
         stats = self.cache.get(stats_key)
-        std = OnlineCurveStandardizer(stats)
-        for config in cfgs:
-            kws = config.std_kws.copy()
-            kws.update(xtra.get(config.mode, {}))
-            std.add_standardizer(config.mode, config.std_cls, **kws)
-        # Fits on the previously computed curve stats
+        std = OnlineCurveStandardizer(curve_stats=stats, configs=configs)
+        # Fits on the previously computed curve stats provided at init
         std.fit()
         self.cache.set(key, std)
 
@@ -185,14 +212,8 @@ class Experiment:
     def build_data_matrix(self, key='data_matrix',
                           meta_key='meta', xs_key='curve_xs'):
         meta = self.cache.get(meta_key)
-        channel_names = meta[['mode', 'channel']]
-        channel_names = pd.MultiIndex.from_frame(channel_names)
-
         cross_sections = self.cache.get_stream(xs_key)
-        dense_df = pd.concat([df.reindex(columns=channel_names)
-                              for df in cross_sections],
-                             copy=False)
-        dense_df = dense_df.dropna(axis='columns', how='all')
+        dense_df = _to_data_matrix(meta, cross_sections)
         self.cache.set(key, dense_df)
 
     @cached_operation
@@ -200,27 +221,10 @@ class Experiment:
                                 std_key='standardizer',
                                 data_matrix_key='data_matrix',
                                 meta_key='meta'):
-        standardizer = self.cache.get(std_key)
-        data_matrix = self.cache.get(data_matrix_key)
-        # Standardize data matrix
-        # NOTE: This step will drop channels that are constant or zero
-        # (i.e. uninformative) from the data matrix (the steps below will
-        # do the same to the metadata)
-        std_data = standardizer.transform(data_matrix)
-        # Meta has cols 'mode', 'channel', 'description', 'fill'
-        # To do the align below we need 'mode' & 'channel' to be the index
-        # (since these are the columns of the data matrix)
         meta = self.cache.get(meta_key)
-        meta = meta.set_index(['mode', 'channel'])
-        # An error such as
-        #   "TypeError: loop of ufunc does not support argument 0 of type"
-        #   "float which has no callable log10 method"
-        # Indicates that the series in the fill df have dtype "object,"
-        # they need to have a float dtype.
-        fill = pd.DataFrame(meta['fill']).transpose().astype(float)
-        fill, _ = fill.align(std_data, join='right', axis=1)
-        fill_series = standardizer.transform(fill).loc['fill']
-        std_data = std_data.fillna(fill_series)
+        data_matrix = self.cache.get(data_matrix_key)
+        standardizer = self.cache.get(std_key)
+        std_data = _to_std_data_matrix(meta, data_matrix, standardizer)
         self.cache.set(key, std_data)
 
     @cached_operation

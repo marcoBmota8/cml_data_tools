@@ -25,9 +25,11 @@ class DataframeStandardizer(BaseEstimator, TransformerMixin):
     >>> transformed = dfs.transform(X)
     >>> new_transformed = dfs.transform(new_X)
     """
-    def __init__(self):
+    def __init__(self, configs=None):
         self._transformer = {}
         self._standardizer_info = {}
+        if configs is not None:
+            self.configure(configs)
 
     def fit(self, X, y=None):
         """Fit a transformer for each column of X. Returns self.
@@ -113,6 +115,14 @@ class DataframeStandardizer(BaseEstimator, TransformerMixin):
         """
         for key, transformer in self._transformer.items():
             yield (key, transformer.mean_, transformer.stdev_)
+
+    def configure(self, configs, extra_std_kws=None):
+        """Convenience method for adding standardizers from conf objects"""
+        xtra = extra_std_kws or {}
+        for config in configs:
+            kws = config.std_kws.copy()
+            kws.update(xtra.get(config.mode, {}))
+            self.add_standardizer(config.mode, config.std_cls, **kws)
 
 
 class SeriesStandardizer(BaseEstimator, TransformerMixin):

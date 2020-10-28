@@ -15,7 +15,7 @@ CurveStats = collections.namedtuple('CurveStats', [
 ])
 
 
-def collect_curve_stats(curves):
+def collect_curve_stats(curves, eps=1e-6):
     # We want to track, for each curve, the total number of observations
     # and the number of non-negative values, the mean and variance of the
     # curve, and the mean and variance of the curve to log10
@@ -27,7 +27,7 @@ def collect_curve_stats(curves):
     N_tot = np.full(M.shape, len(X), dtype=np.int64)
     N_pos = (X > 0.0).sum(axis=0)
 
-    log_X = np.log10(X)
+    log_X = np.log10(X + eps)
     log_X[np.isinf(log_X)] = np.nan
     log_M = np.nanmean(log_X, axis=0)
     log_V = np.nanvar(log_X, axis=0)
@@ -72,9 +72,29 @@ def update_curve_stats(prev, curr):
     log_cv = curr_log_v[curr_idx]
     log_pm = prev_log_m[prev_idx]
     log_pv = prev_log_v[prev_idx]
-    log_dx = log_cm - log_pm
-    log_M = log_pm + (cf * log_dx)
-    log_V = (log_pv * pf) + (log_cv * cf) + (pf * cf * log_dx * log_dx)
+
+    dx = cm - pm
+    M = pm + (cf * dx)
+    V = (pv * pf) + (cv * cf) + (pf * cf * dx * dx)
+
+    # Masks for correctly propagating NaN
+    # NaNs require special handling during update - if both operands are NaN,
+    # we want the NaN to propagate up, otherwise we want to ignore it
+    #log_cm_nan = np.isnan(log_cm)
+    #log_cv_nan = np.isnan(log_cv)
+    #log_pm_nan = np.isnan(log_pm)
+    #log_pv_nan = np.isnan(log_pv)
+
+    log_dx = np.nansum(np.stack((log_cm, -log_pm)), axis=0)
+    log_M = np.nansum(np.stack((log_pm, cf*log_dx)), axis=0)
+    # Restore NaN where both inputs were NaN
+    #log_M[log_cm_nan & log_pm_nan] = np.nan
+
+    log_V = (np.nanprod(np.stack((log_pv, pf)), axis=0)
+             + np.nanprod(np.stack((log_cv, cf)), axis=0)
+             + np.nanprod(np.stack((pf, cf, log_dx, log_dx)), axis=0))
+    # Restore NaN where all four inputs were NaN
+    #log_V[log_cm_nan & log_cv_nan & log_pm_nan & log_pv_nan] = np.nan
 
     # Update num positive, max & min values
     n_pos = prev_pos[prev_idx] + curr_pos[curr_idx]
@@ -116,8 +136,8 @@ def update_curve_stats(prev, curr):
 
 
 class OnlineCurveStandardizer(DataframeStandardizer):
-    def __init__(self, curve_stats=None):
-        super().__init__()
+    def __init__(self, curve_stats=None, **kwargs):
+        super().__init__(**kwargs)
         self.curve_stats = curve_stats
 
     def update_from_stats(self, stats):
@@ -151,7 +171,7 @@ class OnlineCurveStandardizer(DataframeStandardizer):
             mode = channel_name[0]
             standardizer, kwargs = self._standardizer_info[mode]
             instance = standardizer(**kwargs)
-            # Manually fit the standardizers
+            # Manually set the standardizers' params
             if standardizer is LinearStandardizer:
                 pass
             elif standardizer is GelmanStandardizer:
@@ -168,7 +188,7 @@ class OnlineCurveStandardizer(DataframeStandardizer):
                 if np.isnan(stats.base_mean):
                     transformer = LinearStandardizer()
                 elif stats.base_var < 1e-6:
-                    transformer = LinearStandardizer(offset=stats.curve_min)
+                    transformer = LinearStandardizer(offset=-stats.curve_min)
                 elif stats.n_pos < (stats.n_tot * 0.99):
                     transformer = GelmanStandardizer(log_transform=False)
                     transformer._mean = stats.base_mean
