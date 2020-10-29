@@ -10,7 +10,7 @@ from cml_data_tools.standardizers import (DataframeStandardizer,
 
 
 CurveStats = collections.namedtuple('CurveStats', [
-    'channels', 'n_pos', 'base_total', 'base_mean', 'base_var', 'log_total',
+    'channels', 'n_neg', 'base_total', 'base_mean', 'base_var', 'log_total',
     'log_mean', 'log_var', 'curve_min', 'curve_max'
 ])
 
@@ -21,7 +21,7 @@ def collect_curve_stats(curves, eps=1e-6):
     # curve, and the mean and variance of the curve to log10
     C = curves.columns.values
     X = curves.values
-    n_pos = (X > 0.0).sum(axis=0)
+    n_neg = (X < 0.0).sum(axis=0)
 
     base_M = np.nanmean(X, axis=0)
     base_V = np.nanvar(X, axis=0)
@@ -36,7 +36,7 @@ def collect_curve_stats(curves, eps=1e-6):
     curve_min = np.nanmin(X, axis=0)
     curve_max = np.nanmax(X, axis=0)
 
-    return CurveStats(C, n_pos, base_total, base_M, base_V, log_total, log_M,
+    return CurveStats(C, n_neg, base_total, base_M, base_V, log_total, log_M,
                       log_V, curve_min, curve_max)
 
 
@@ -89,7 +89,7 @@ def update_curve_stats(prev, curr):
              + np.nanprod(np.stack((log_pf, log_cf, log_dx, log_dx)), axis=0))
 
     # Update num positive, max & min values
-    n_pos = prev_pos[prev_idx] + curr_pos[curr_idx]
+    n_neg = prev_pos[prev_idx] + curr_pos[curr_idx]
     c_max = np.maximum(prev_max[prev_idx], curr_max[curr_idx])
     c_min = np.minimum(prev_min[prev_idx], curr_min[curr_idx])
 
@@ -103,7 +103,7 @@ def update_curve_stats(prev, curr):
 
     # Recombine the unchanged, updated, and new values
     C = np.concatenate((C, prev_chan[p_mask], curr_chan[c_mask]))
-    P = np.concatenate((n_pos, prev_pos[p_mask], curr_pos[c_mask]))
+    P = np.concatenate((n_neg, prev_pos[p_mask], curr_pos[c_mask]))
     N = np.concatenate((N, prev_n[p_mask], curr_n[c_mask]))
     M = np.concatenate((M, prev_m[p_mask], curr_m[c_mask]))
     V = np.concatenate((V, prev_v[p_mask], curr_v[c_mask]))
@@ -177,18 +177,19 @@ class OnlineCurveStandardizer(DataframeStandardizer):
                     stdev = np.sqrt(stats.base_var)
                 instance._mean = mean
                 instance._stdev = stdev
-                instance.eps = 0.0
             elif standardizer is LogGelmanStandardizerWithFallbacks:
                 if np.isnan(stats.base_mean):
                     transformer = LinearStandardizer()
-                elif stats.base_var < 1e-6:
+                elif ((stats.curve_max - stats.curve_min) <
+                      (1e-6 * (stats.curve_max + stats.curve_min))):
                     transformer = LinearStandardizer(offset=-stats.curve_min)
-                elif stats.n_pos < (stats.base_total * 0.99):
+                elif stats.n_neg > 0.01 * stats.base_total:
                     transformer = GelmanStandardizer(log_transform=False)
                     transformer._mean = stats.base_mean
                     transformer._stdev = np.sqrt(stats.base_var)
                 else:
-                    transformer = GelmanStandardizer(log_transform=True)
+                    transformer = GelmanStandardizer(log_transform=True,
+                                                     eps=instance.eps)
                     transformer._mean = stats.log_mean
                     transformer._stdev = np.sqrt(stats.log_var)
                 instance._transformer = transformer
