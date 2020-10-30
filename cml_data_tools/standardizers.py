@@ -366,4 +366,6 @@ class LogGelmanStandardizerWithFallbacks(SeriesStandardizer):
         return self._transformer.inverse_transform(series)
 
     def inverse_transform_label(self, delta, spec=None):
+        if spec is None:
+            return self._transformer.inverse_transform_label(delta)
         return self._transformer.inverse_transform_label(delta, spec=spec)

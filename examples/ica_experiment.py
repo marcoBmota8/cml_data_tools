@@ -114,6 +114,9 @@ if __name__ == '__main__':
             experiment.standardize_data_matrix(std_key='../standardizer',
                                                meta_key='../meta')
             experiment.learn_model()
+            experiment.plot_model(pdf_path=cache.loc/'phenotypes.pdf',
+                                  meta_key='../meta',
+                                  std_key='../standardizer')
 
     #experiment.combine_models()
     #experiment.plot_model()

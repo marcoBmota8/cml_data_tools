@@ -2,13 +2,14 @@
 Tools for plotting objects
 """
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
 
 
 def plot_phenotypes_to_file(phenotypes, expressions, filepath, channel_data,
                             standardizer):
-    emax = expressions.max().max() * 1.05
+    emax = np.max(expressions.values) * 1.05
     # ptmax = phenotypes.max().max() * 1.05
     ptmax = None
     # sorted_index = expressions[expressions.abs() >
