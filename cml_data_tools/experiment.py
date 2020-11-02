@@ -151,8 +151,8 @@ class Experiment:
     sections (via `compute_cross_sections`) at two different densities and save
     the results of both operations. I.e.
 
-        >>> experiment.compute_cross_sections(key='xs_yearly', density=1/365)
-        >>> experiment.compute_cross_sections(key='xs_monthly', density=1/30)
+    >>> experiment.compute_cross_sections(key='xs_yearly', density=1/365)
+    >>> experiment.compute_cross_sections(key='xs_monthly', density=1/30)
 
     Our state-machine memory now contains two entries of cross sections,
     `xs_yearly` and `xs_monthly`, taken from the curves once yearly and once
@@ -163,8 +163,8 @@ class Experiment:
     wished to compute data matrices for our previously computed sampling rates,
     we would execute:
 
-        >>> experiment.build_data_matrix(key='dm_yearly', xs_key='xs_yearly')
-        >>> experiment.build_data_matrix(key='dm_monthly', xs_key='xs_monthly')
+    >>> experiment.build_data_matrix(key='dm_yearly', xs_key='xs_yearly')
+    >>> experiment.build_data_matrix(key='dm_monthly', xs_key='xs_monthly')
 
     Check each operation's documentation for what other keys it needs in order
     to function.
@@ -174,9 +174,9 @@ class Experiment:
     cached operation accepts a keyword argument "force", which will force
     re-execution of the operation. For example, in the following sequence
 
-        >>> experiment.fetch_data()
-        >>> experiment.fetch_data()
-        >>> experiment.fetch_data(force=True)
+    >>> experiment.fetch_data()
+    >>> experiment.fetch_data()
+    >>> experiment.fetch_data(force=True)
 
     The first line establishes a DB connection and downloads the data, storing
     it in the cache at the default key "data." The second line is then a noop.
