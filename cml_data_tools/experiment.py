@@ -114,10 +114,10 @@ def _expression_trajectories(expressions, freq, agg):
 def cached_operation(func):
     default_key = inspect.signature(func).parameters['key'].default
     @functools.wraps(func)
-    def wrapper(self, force=False, **kwargs):
+    def wrapper(self, *args, force=False, **kwargs):
         key = kwargs.get('key', default_key)
         if key not in self.cache or force:
-            return func(self, **kwargs)
+            return func(self, *args, **kwargs)
     return wrapper
 
 
@@ -405,6 +405,27 @@ class Experiment:
         model = IcaPhenotypeModel(**model_kws)
         model.fit(data)
         self.cache.set(key, model)
+
+    @cached_operation
+    def collect_phenotypes(self, model_keys, key='phenotypes'):
+        """Collect phenotypes from models specified in model_keys into a
+        single file for further analysis or hand inspection.
+
+        Arguments
+        ---------
+        model_keys : Iterator
+            An input iterator of keys (or locations) for models to aggregate
+
+        Keyword Arguments
+        -----------------
+        key : str
+            Default 'phenotypes'. Key for the dict of phenotypes.
+        """
+        phen = {}
+        for k in model_keys:
+            model = self.cache.get(k)
+            phen[k] = model.phenotypes_
+        self.cache.set(key, phen)
 
     def combine_models(self):
         # TODO

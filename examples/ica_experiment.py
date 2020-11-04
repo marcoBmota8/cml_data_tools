@@ -99,7 +99,7 @@ if __name__ == '__main__':
     import warnings
     warnings.simplefilter('ignore')
 
-    cache = PickleCache(loc='/hd1/stilljm/cml_tests/B')
+    cache = PickleCache(loc='/hd1/stilljm/cml_tests/A')
     experiment = e = Experiment(configs, cache)
     experiment.fetch_data()
     experiment.fetch_meta()
@@ -114,9 +114,22 @@ if __name__ == '__main__':
             experiment.standardize_data_matrix(std_key='../standardizer',
                                                meta_key='../meta')
             experiment.learn_model()
-            experiment.plot_model(pdf_path=cache.loc/'phenotypes.pdf',
-                                  meta_key='../meta',
-                                  std_key='../standardizer')
+
+    model_keys = sorted(cache.loc.glob('segment_*/model.pkl'))
+
+    # Generate PDFs if they don't already exist
+    pdf_dir = cache.loc/'pdfs'
+    try:
+        pdf_dir.mkdir()
+    except FileExistsError:
+        pass
+    else:
+        for i, model_key in enumerate(model_keys):
+            experiment.plot_model(pdf_path=pdf_dir/f'phenotypes_{i:03}.pdf',
+                                  model_key=model_key)
+
+    # Collect phenotypes
+    experiment.collect_phenotypes(model_keys)
 
     #experiment.combine_models()
     #experiment.plot_model()
