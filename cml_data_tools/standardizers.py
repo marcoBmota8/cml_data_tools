@@ -180,24 +180,34 @@ class SeriesStandardizer(BaseEstimator, TransformerMixin):
         """Provides the meaning of `delta` in the original space, with format
         `spec`.
 
-        This is for use in phenotype plots. For most transforms, `delta` in the
-        transformed space is simply scaled to the original space and given an
-        additive label. If a logarithmic transform is part of the transform,
-        then `delta` is appropriately scaled and given a multiplicative label.
+        This is for use in phenotype plots. For most transforms, an additive
+        change in the amount `delta` corresponds an scaled but still additive
+        amount in the original space. In this case, `delta` in the transformed
+        space is simply scaled to the original space and given an additive
+        label. If the transform includes a logarithm operation, then an
+        additive `delta` in the original space corresponds to a multiplicative
+        change in the original space. In this case, `delta` is appropriately
+        scaled and given a multiplicative label.
 
         Examples
         --------
-        >>> # If `s` transforms by scaling 2x:
+        # If `x` is the original data, 'y' is the scaled data,
+        # if `s` transforms by scaling 0.5 * x + c, then
+        # x2 - x1 = 2.0 * (y2 - y1), regardless of the value of `c`:
         >>> s.inverse_transform_label(1.0)
         "+2.0"
+        # and likewise:
         >>> s.inverse_transform_label(-1.0)
         "-2.0"
 
-        >>> # If `s` transforms by 3 * log10(x) - 2:
+        # If `s` transforms by y = 3 * log10(x) - c, then
+        # x2 / x1 = pow(10, (y2 - y1) / 3), regardless of the value of `c`:
         >>> s.inverse_transform_label(1.0)
-        "*2.15"   # i.e. "+115%"
+        "*2.15"
+        # and likewise:
         >>> s.inverse_transform_label(-1.0)
-        "*0.464"  # i.e. "-53.6%"
+        "/2.15"
+
         """
         raise NotImplementedError
 
@@ -297,7 +307,7 @@ class GelmanStandardizer(SeriesStandardizer):
             orig_frac = self._inverse_transform_ratio(delta)
             if spec is None:
                 spec = '.2f'
-            label = f'x{orig_frac:{spec}}'
+            label = f'x{orig_frac:{spec}}' if orig_frac > 1.0 else f'/{1.0/orig_frac:{spec}}'
         else:
             orig_delta = self._inverse_transform_difference(delta)
             if spec is None:
