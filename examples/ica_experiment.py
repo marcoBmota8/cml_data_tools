@@ -99,7 +99,7 @@ if __name__ == '__main__':
     import warnings
     warnings.simplefilter('ignore')
 
-    cache = PickleCache(loc='/hd1/stilljm/cml_tests/A')
+    cache = PickleCache(loc='/hd1/stilljm/cml_tests/B')
     experiment = e = Experiment(configs, cache)
     experiment.fetch_data()
     experiment.fetch_meta()
@@ -110,9 +110,9 @@ if __name__ == '__main__':
         path = Path(cache.loc/f'segment_{i:03}')
         with cache.relocate(path):
             experiment.compute_cross_sections(curves_key='../curves')
-            experiment.build_data_matrix(meta_key='../meta')
-            experiment.standardize_data_matrix(std_key='../standardizer',
-                                               meta_key='../meta')
+            # create and standardize data matrix in one step
+            experiment.build_standardized_data_matrix(meta_key='../meta',
+                                                      std_key='../standardizer')
             experiment.learn_model()
 
     model_keys = sorted(cache.loc.glob('segment_*/model.pkl'))

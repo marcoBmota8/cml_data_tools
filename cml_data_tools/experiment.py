@@ -59,6 +59,40 @@ def _sample_from_curves(curves, density):
             yield samples
 
 
+def _build_std_matrix(meta, cross_sections, standardizer, return_dense=True):
+    meta = meta.set_index(['mode', 'channel'])
+    # An error such as
+    #   "TypeError: loop of ufunc does not support argument 0 of type"
+    #   "float which has no callable log10 method"
+    # Indicates that the series in the fill df have dtype "object,"
+    # they need to have a float dtype.
+    meta.fill = meta.fill.astype(np.float)
+    # A KeyError during the standardization process indicates that we have
+    # channels in the metadata not present in the actual patient data curves;
+    # here we select only meta for channels which exist
+    channels = list(standardizer.curve_stats.channels)
+    channels = pd.MultiIndex.from_tuples(channels)
+    meta = meta.loc[channels]
+    # Use the actual channels from the patient data to reindex the cross
+    # sections and then build the full, dense data matrix. The size of dense
+    # should be [num cross sections, num channels across all patient data]
+    dense = []
+    for df in cross_sections:
+        df = df.reindex(columns=channels)
+        dense.append(df)
+    dense = pd.concat(dense, copy=False)
+    # Standardize the data matrix, then the fill values, then use the fill
+    # values to remove all NaN from the standardized data matrix
+    std_matrix = standardizer.transform(dense)
+    fill = pd.DataFrame(meta.fill).transpose()
+    fill, _ = fill.align(std_matrix, join='right', axis=1)
+    fill = standardizer.transform(fill).loc['fill']
+    std_matrix = std_matrix.fillna(fill)
+    if return_dense:
+        return dense, std_matrix
+    return std_matrix
+
+
 def _to_data_matrix(meta, cross_sections):
     channels = meta[['mode', 'channel']]
     channels = pd.MultiIndex.from_frame(channels)
@@ -340,6 +374,45 @@ class Experiment:
         std = OnlineCurveStandardizer(curve_stats=stats, configs=self.configs)
         std.fit()
         self.cache.set(key, std)
+
+    @cached_operation
+    def build_standardized_data_matrix(self, key='std_matrix',
+                                       dense_key='data_matrix',
+                                       meta_key='meta',
+                                       xs_key='curve_xs',
+                                       std_key='standardizer',
+                                       save_dense=True):
+        """Merges a set of dataframes with heterogeneous column labels into a
+        single dataframe. Prunes the column labels by what actually exists in
+        the curve data (taken from the fit standardizer), and then finally
+        standardizes the dataframe.
+
+        Keyword Arguments
+        -----------------
+        key : str
+            Default 'std_matrix'. Key for the final merged, standardized, and
+            filled dataframe.
+        dense_key : str
+            Default 'data_matrix'. Key for merged dataframe. Cf `save_dense`.
+        meta_key : str
+            Default 'meta'. Key for the column label metadata.
+        xs_key : str
+            Default 'curve_xs'. Key for the stream of dataframes to merge.
+        std_key : str
+            Default 'standardizer'. Key for a fitted standardizer instance.
+        save_dense : bool
+            Default True. If True, then this step saves the unstandardized,
+            unfilled data matrix in the cache using `dense_key` as the key.
+            This can be useful for manually inspecting the merged data prior to
+            filling and standardizing.
+        """
+        meta = self.cache.get(meta_key)
+        cross_sections = self.cache.get_stream(xs_key)
+        standardizer = self.cache.get(std_key)
+        dense, matrix = _build_std_matrix(meta, cross_sections, standardizer)
+        if save_dense:
+            self.cache.set(dense_key, dense)
+        self.cache.set(key, matrix)
 
     @cached_operation
     def build_data_matrix(self, key='data_matrix',
