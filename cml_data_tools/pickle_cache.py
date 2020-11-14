@@ -67,7 +67,7 @@ class PickleCache:
         """
         try:
             path = self._make_path(key)
-            path.remove()
+            path.unlink()
         except FileNotFoundError:
             raise KeyError(f'{key} not in cache')
 

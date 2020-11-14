@@ -98,38 +98,56 @@ configs = [
 if __name__ == '__main__':
     import warnings
     warnings.simplefilter('ignore')
+    loc = '/hd1/stilljm/cml_tests/C'
 
-    cache = PickleCache(loc='/hd1/stilljm/cml_tests/B')
+    logging.basicConfig(filename='ICA_run_C.log',
+                        format='%(asctime)s %(message)s',
+                        datefmt='%m/%d/%Y %I:%M:%S %p',
+                        level=logging.INFO)
+    logging.info(f'Setting up Experiment with cache loc {loc}')
+
+    cache = PickleCache(loc=loc)
     experiment = e = Experiment(configs, cache)
+
+    logging.info('Fetching data & channel metadata')
     experiment.fetch_data()
     experiment.fetch_meta()
+
+    logging.info('Computing Curves')
     experiment.compute_curves(max_workers=48)
+
+    logging.info('Constructing standardizer')
     experiment.make_standardizer()
 
-    for i in range(10):
+    logging.info('Beginning to train submodels')
+    for i in range(100):
+        logging.info('Training submodel {i:03}')
         path = Path(cache.loc/f'segment_{i:03}')
         with cache.relocate(path):
             experiment.compute_cross_sections(curves_key='../curves')
             # create and standardize data matrix in one step
-            experiment.build_standardized_data_matrix(meta_key='../meta',
-                                                      std_key='../standardizer')
+            experiment.build_standardized_data_matrix(key='std_matrix',
+                                                      meta_key='../meta',
+                                                      std_key='../standardizer',
+                                                      save_dense=False)
             experiment.learn_model()
+            # Remove the std matrix (~40G) for storage considerations
+            cache.remove('std_matrix')
 
+    logging.info('Submodel training complete')
     model_keys = sorted(cache.loc.glob('segment_*/model.pkl'))
 
-    # Generate PDFs if they don't already exist
-    pdf_dir = cache.loc/'pdfs'
-    try:
-        pdf_dir.mkdir()
-    except FileExistsError:
-        pass
-    else:
-        for i, model_key in enumerate(model_keys):
-            experiment.plot_model(pdf_path=pdf_dir/f'phenotypes_{i:03}.pdf',
-                                  model_key=model_key)
+#    # Generate PDFs if they don't already exist
+#    pdf_dir = cache.loc/'pdfs'
+#    try:
+#        pdf_dir.mkdir()
+#    except FileExistsError:
+#        pass
+#    else:
+#        for i, model_key in enumerate(model_keys):
+#            experiment.plot_model(pdf_path=pdf_dir/f'phenotypes_{i:03}.pdf',
+#                                  model_key=model_key)
 
     # Collect phenotypes
+    logging.info('Collecting submodel phenotypes together')
     experiment.collect_phenotypes(model_keys)
-
-    #experiment.combine_models()
-    #experiment.plot_model()
