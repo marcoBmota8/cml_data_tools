@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from cml_data_tools.curves import build_patient_curves
+from cml_data_tools.clustering import make_affinity_matrix
 from cml_data_tools.models import IcaPhenotypeModel
 from cml_data_tools.pickle_cache import PickleCache
 from cml_data_tools.plotting import plot_phenotypes_to_file
@@ -499,6 +500,44 @@ class Experiment:
             model = self.cache.get(k)
             phen[k] = model.phenotypes_
         self.cache.set(key, phen)
+
+    @cached_operation
+    def create_affinity_matrix(self, key='affinity_matrix',
+                               phenotypes_key='phenotypes'):
+        """Transform the collected phenotypes from trained submodels into an
+        affinity matrix.
+
+        Keyword Arguments
+        -----------------
+        key : str
+            Default 'affinity_matrix'. Key for the 2d ndarray of similarities.
+        phenotypes_key : str
+            Default 'phenotypes'. Key for the dict of phenotypes.
+        """
+        phenotypes = self.cache.get(phenotypes_key)
+        aff_matrix = make_affinity_matrix(list(phenotypes.values()))
+        self.cache.set(key, aff_matrix)
+
+    @cached_operation
+    def cluster_affinities(self, key='clustering',
+                           affinity_key='affinity_matrix',
+                           **kwargs):
+        """Run affinity propagation on precomputed similarities (affinities).
+
+        Keyword Arguments
+        -----------------
+        key : str
+            Default 'clustering'. Key for a clustering.Clustering object.
+        affinities_key : str
+            Default 'affinity_matrix'. Key for the precomputed affinities.
+        **kwargs
+            All other kwargs are forwarded to the affinity propagation
+            algorithm.
+        """
+        S = self.cache.get(affinity_matrix)
+        clusterer = AffinityPropagationClusterer(**kwargs)
+        clusterer.fit(S)
+        self.cache.set(key, clusterer)
 
     def combine_models(self):
         # TODO

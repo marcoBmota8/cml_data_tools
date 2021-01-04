@@ -167,3 +167,9 @@ if __name__ == '__main__':
     # Collect phenotypes
     logging.info('Collecting submodel phenotypes together')
     experiment.collect_phenotypes(model_keys)
+
+    logging.info('Creating affinity matrix from collected phenotypes')
+    experiment.create_affinity_matrix()
+
+    logging.info('Clustering phenotypes from submodel')
+    experiment.cluster_affinities(preference=0.74, damping=0.82, threshold=0.6)
