@@ -33,6 +33,7 @@ JOIN V_MEASUREMENT B ON (A.person_id = B.person_id)
 JOIN MEASUREMENT_STATS C ON (B.measurement_concept_id = C.measurement_concept_id)
 WHERE (
     B.value_as_number IS NOT NULL
+    AND date >= '2000-01-01'
     AND C.count >= 1000
     AND channel != '29463-7'
     AND channel != '8302-2'
@@ -65,7 +66,11 @@ SELECT DISTINCT
 FROM SLE_IDS A
 JOIN V_CONDITION_OCCURRENCE B ON (A.person_id = B.person_id)
 JOIN COUNTS C ON (B.condition_concept_id = C.concept_id)
-WHERE C.count >= 1000 AND C.domain_id = 'Condition'
+WHERE (
+    C.count >= 1000
+    AND C.domain_id = 'Condition'
+    AND date >= '2000-01-01'
+)
 ORDER BY id, date;
 
 -- Fill value is 1 / (20 * 365.25)
@@ -94,6 +99,7 @@ JOIN V_CONCEPT C on (CA.ancestor_concept_id = C.concept_id)
 JOIN INGREDIENT_STATS I on (CA.ancestor_concept_id = I.ingredient_concept_id)
 WHERE (
     C.concept_class_id = 'Ingredient'
+    AND date >= '2000-01-01'
     AND I.count >= 1000
     AND (nullif(X.x_strength, '') IS NOT NULL OR nullif(X.x_dose, '') IS NOT NULL)
     AND nullif(X.x_frequency, '') IS NOT NULL
@@ -164,7 +170,11 @@ SELECT DISTINCT
 FROM SLE_IDS A
 JOIN V_MEASUREMENT B ON (A.person_id = B.person_id)
 JOIN V_X_VS_BMI_CLEAN c ON (B.measurement_id = C.measurement_id)
-WHERE B.value_as_number IS NOT NULL AND C.x_is_cleaned='Y'
+WHERE (
+    B.value_as_number IS NOT NULL
+    AND C.x_is_cleaned='Y'
+    AND date >= '2000-01-01'
+)
 ORDER BY id, date;
 
 -- ANA
@@ -180,4 +190,5 @@ SELECT DISTINCT
     ) AS value
 FROM ANA P
 RIGHT JOIN SLE_IDS G ON (P.person_id = G.person_id)
+WHERE date >= '2000-01-01'
 ORDER BY id, date;

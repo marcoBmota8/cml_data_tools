@@ -19,6 +19,7 @@ def collect_curve_stats(curves, eps=1e-6):
     # We want to track, for each curve, the total number of observations
     # and the number of non-negative values, the mean and variance of the
     # curve, and the mean and variance of the curve to log10
+    curves = curves.dropna(axis=1, how='all')
     C = curves.columns.values
     X = curves.values
     n_neg = (X < 0.0).sum(axis=0)

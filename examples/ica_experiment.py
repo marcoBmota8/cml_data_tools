@@ -3,6 +3,7 @@
 Example application using ICA
 """
 import logging
+import resource
 from pathlib import Path
 
 import sd_access
@@ -98,10 +99,13 @@ configs = [
 if __name__ == '__main__':
     import warnings
     warnings.simplefilter('ignore')
-    loc = '/hd1/stilljm/cml_tests/C'
+    loc = '/hd1/stilljm/cml_tests/D'
 
-    logging.basicConfig(filename='ICA_run_C.log',
-                        format='%(asctime)s %(message)s',
+    N_MODEL = 100
+    N_PHENT = 500
+
+    logging.basicConfig(filename='ICA_run_D0.log',
+                        format='%(asctime)s %(name)s %(message)s',
                         datefmt='%m/%d/%Y %I:%M:%S %p',
                         level=logging.INFO)
     logging.info(f'Setting up Experiment with cache loc {loc}')
@@ -120,19 +124,31 @@ if __name__ == '__main__':
     experiment.make_standardizer()
 
     logging.info('Beginning to train submodels')
-    for i in range(100):
-        logging.info('Training submodel {i:03}')
+    for i in range(N_MODEL):
+        logging.info(f'Training submodel {i:03}')
         path = Path(cache.loc/f'segment_{i:03}')
+
+        # Complex cache skipping not yet implemented, so to avoid redoing all
+        # those standardized matrices / etc we do this for now
+        if path.exists():
+            continue
+
         with cache.relocate(path):
+            logging.info(f'Computing cross sections for model {i:03}')
             experiment.compute_cross_sections(curves_key='../curves')
             # create and standardize data matrix in one step
+            logging.info(f'Computing data matrix for model {i:03}')
             experiment.build_standardized_data_matrix(key='std_matrix',
                                                       meta_key='../meta',
                                                       std_key='../standardizer',
                                                       save_dense=False)
-            experiment.learn_model()
+            experiment.learn_model(max_phenotypes=N_PHENT)
             # Remove the std matrix (~40G) for storage considerations
             cache.remove('std_matrix')
+
+            # Try to track memory usage so we can see if we run out of memory
+            mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            logging.info(f'RSS usage: {mem}Kb')
 
     logging.info('Submodel training complete')
     model_keys = sorted(cache.loc.glob('segment_*/model.pkl'))
