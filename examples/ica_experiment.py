@@ -104,7 +104,7 @@ if __name__ == '__main__':
     N_MODEL = 100
     N_PHENT = 500
 
-    logging.basicConfig(filename='ICA_A.log',
+    logging.basicConfig(filename='ICA_A.clustering.log',
                         format='%(asctime)s %(name)s %(message)s',
                         datefmt='%m/%d/%Y %I:%M:%S %p',
                         level=logging.INFO)
@@ -172,4 +172,4 @@ if __name__ == '__main__':
     experiment.create_affinity_matrix()
 
     logging.info('Clustering phenotypes from submodel')
-    experiment.cluster_affinities(preference=0.74, damping=0.82, threshold=0.6)
+    experiment.cluster_affinities(damping=0.82, threshold=0.6)

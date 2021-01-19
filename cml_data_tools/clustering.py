@@ -34,11 +34,11 @@ def iter_clusters(matrix, labels):
     """Iterates tuples of (cluster submatrix, cluster indices)"""
     labelset = np.unique(labels)
     #assert (labelset == np.arange(len(labelset))).all(), labelset
-    for n in labelset:
-        mask = labels == n
+    for center in labelset:
+        mask = labels == center
         index = np.ix_(mask, mask)
         submat = matrix[index]
-        yield submat, index
+        yield submat, index, center
 
 
 class PerfectClusterScorer:
@@ -60,7 +60,7 @@ class PerfectClusterScorer:
             return -1
 
         score = 0
-        for (_, (_, idx)) in iter_clusters(matrix, labels):
+        for (_, (_, idx), _) in iter_clusters(matrix, labels):
             if self.is_perfect(idx):
                 score += 1
         return score
@@ -76,13 +76,8 @@ class AffinityPropagationClusterer:
         self.copy = copy
         self.random_state = random_state
 
-    def fit(self, S, thresh=0.5):
+    def fit(self, S):
         S = coo_matrix(S, copy=self.copy, dtype=np.float)
-
-        # Allowing thresh to be None allows this whole conversion to happen
-        # elsewhere
-        if thresh is not None:
-            S[S < thresh] = 0.0
 
         if self.random_state is not None:
             np.random.seed(self.random_state)

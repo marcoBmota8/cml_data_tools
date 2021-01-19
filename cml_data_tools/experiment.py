@@ -10,7 +10,8 @@ import numpy as np
 import pandas as pd
 
 from cml_data_tools.curves import build_patient_curves
-from cml_data_tools.clustering import make_affinity_matrix
+from cml_data_tools.clustering import (make_affinity_matrix, iter_clusters,
+                                       AffinityPropagationClusterer)
 from cml_data_tools.models import IcaPhenotypeModel
 from cml_data_tools.pickle_cache import PickleCache
 from cml_data_tools.plotting import plot_phenotypes_to_file
@@ -227,7 +228,7 @@ class Experiment:
         self.cache = cache
 
     @cached_operation
-    def fetch_data(self, key='data'):
+    def fetch_data(self, key='data', minimum_inst=2):
         """Download patient data
 
         Aggregates by patient ID and converts to pandas.DataFrame before
@@ -239,6 +240,12 @@ class Experiment:
             Default 'data'. Specifies cache key for the fetched data.
         """
         data_iter = map(make_data_df, aggregate_data(self.configs))
+        # Filter out persons who don't have at least minimum_inst distinct
+        # dates of data
+        data_iter = (
+            df for df in data_iter
+            if len(df['date'][~np.isnan(df['date'])].unique()) >= minimum_inst
+        )
         self.cache.set_stream(key, data_iter)
 
     @cached_operation
@@ -520,7 +527,10 @@ class Experiment:
 
     @cached_operation
     def cluster_affinities(self, key='clustering',
+                           clusters_key='clusters',
                            affinity_key='affinity_matrix',
+                           preference=None,
+                           threshold=None,
                            **kwargs):
         """Run affinity propagation on precomputed similarities (affinities).
 
@@ -528,16 +538,40 @@ class Experiment:
         -----------------
         key : str
             Default 'clustering'. Key for a clustering.Clustering object.
+        clusters_key : str
+            Default 'clusters'. Key for secondary product, triplets of
+            (submatrix, indices, center) for each cluster, where the submatrix
+            is the original, unmasked values of the affinity matrix for the
+            cluster centered at `center`.
         affinities_key : str
             Default 'affinity_matrix'. Key for the precomputed affinities.
+        preference : Number
+            Default None. The preference is passed through to the Affinity
+            Propagation algorithm. If None (the default), the median of the
+            unmasked affinity matrix is used.
+        threshold : Number
+            Default None. Used to construct a sparse affinity matrix. If None,
+            the cached affinity matrix is used without any masking.
         **kwargs
             All other kwargs are forwarded to the affinity propagation
             algorithm.
         """
-        S = self.cache.get(affinity_matrix)
+        S = self.cache.get(affinity_key).copy()
+        # Use median as default preference for Affinity Propagation
+        # median should be calculated prior to threshold masking
+        if preference is None:
+            preference = np.median(S)
+        kwargs['preference'] = preference
+        # Generate clustering on copy of affinity matrix
+        S0 = S.copy()
+        if threshold is not None:
+            S0[S0 < threshold] = 0.0
         clusterer = AffinityPropagationClusterer(**kwargs)
-        clusterer.fit(S)
+        clusterer.fit(S0)
         self.cache.set(key, clusterer)
+        # Pull clusters from original affinity matrix
+        clusters = list(iter_clusters(S, clusterer.labels_))
+        self.cache.set(clusters_key, clusters)
 
     def combine_models(self):
         # TODO
