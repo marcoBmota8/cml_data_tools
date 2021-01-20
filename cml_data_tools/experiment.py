@@ -228,7 +228,7 @@ class Experiment:
         self.cache = cache
 
     @cached_operation
-    def fetch_data(self, key='data', minimum_inst=2):
+    def fetch_data(self, key='data', min_inst=2, min_span=182):
         """Download patient data
 
         Aggregates by patient ID and converts to pandas.DataFrame before
@@ -238,13 +238,20 @@ class Experiment:
         -----------------
         key : str
             Default 'data'. Specifies cache key for the fetched data.
+        min_inst : int
+            Default 2. Minimum number of distinct dates a patient record must
+            have in order to be used for further processing.
+        min_span : int
+            Default 182. Minimum distance between the earliest and latest date
+            in the patient record for which there is data. Default is 6 months.
         """
         data_iter = map(make_data_df, aggregate_data(self.configs))
-        # Filter out persons who don't have at least minimum_inst distinct
+        # Filter out persons who don't have at least min_inst distinct
         # dates of data
+        # TODO: min_span
         data_iter = (
             df for df in data_iter
-            if len(df['date'][~np.isnan(df['date'])].unique()) >= minimum_inst
+            if len(df['date'][~np.isnan(df['date'])].unique()) >= min_inst
         )
         self.cache.set_stream(key, data_iter)
 
@@ -310,7 +317,6 @@ class Experiment:
         else:
             curves_iter = (_worker(df, spec, resolution, calc_stats)
                            for df in data)
-
 
         if calc_stats:
             def _intercept_stats(curves_iter):
