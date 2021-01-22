@@ -1,6 +1,8 @@
 import collections
 import functools
 import inspect
+import itertools
+import logging
 import operator
 import pathlib
 import pickle
@@ -578,6 +580,28 @@ class Experiment:
         # Pull clusters from original affinity matrix
         clusters = list(iter_clusters(S, clusterer.labels_))
         self.cache.set(clusters_key, clusters)
+
+    @cached_operation
+    def extract_exemplar_expressions(self, model_keys,
+                                     key='exemplar_expressions',
+                                     clustering_key='clustering'):
+        """Extract the expressions for exemplars from a given clustering from a
+        set of model located at model_keys.
+        """
+        clustering = self.cache.get(clustering_key)
+        expressions = {}
+        def gkey(n):
+            return divmod(n, 500)[0]
+        centers = sorted(clustering.centers_)
+        for model_id, grp in itertools.groupby(centers, key=gkey):
+            model = self.cache.get(model_keys[model_id])
+            for n in grp:
+                mid, pid = divmod(n, 500)
+                assert mid == model_id
+                logging.info(f'Loading expr for center {n}: {mid} {pid}')
+                expressions[n] = model.expressions_[f'ICA-{pid:03}'].copy()
+            del model
+        self.cache.set(key, expressions)
 
     def combine_models(self):
         # TODO

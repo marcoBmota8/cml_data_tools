@@ -104,7 +104,7 @@ if __name__ == '__main__':
     N_MODEL = 100
     N_PHENT = 500
 
-    logging.basicConfig(filename='ICA_A.clustering.log',
+    logging.basicConfig(filename='ICA_A.expr.log',
                         format='%(asctime)s %(name)s %(message)s',
                         datefmt='%m/%d/%Y %I:%M:%S %p',
                         level=logging.INFO)
@@ -173,3 +173,6 @@ if __name__ == '__main__':
 
     logging.info('Clustering phenotypes from submodel')
     experiment.cluster_affinities(damping=0.82, threshold=0.6)
+
+    logging.info('Extracting cluster exemplar expressions')
+    experiment.extract_exemplar_expressions(model_keys)
