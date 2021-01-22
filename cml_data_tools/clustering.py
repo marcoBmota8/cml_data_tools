@@ -12,6 +12,46 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.metrics.pairwise import cosine_similarity
 
 
+def intra_cluster_mean_std(cluster):
+    """Returns (mean, std) of a given cluster from an affinity matrix.
+    Undefined (np.nan, np.nan) for clusters which contain at most a single
+    member.
+
+    Arguments
+    ---------
+    cluster : ndarray[N, N]
+        A square submatrix taken from a given affinity matrix representing the
+        affinities of a cluster from the total rows/cols of the affinity
+        matrix.
+
+    Returns
+    -------
+    (float, float) :
+        The mean and stdev (ddof=0) of the cluster members with each other.
+    """
+    if len(cluster) <= 1:
+        # Undefined for clusters which contain at most one member
+        return np.nan, np.nan
+    idx = np.triu_indices_from(cluster, k=1)
+    vec = cluster[idx]
+    return vec.mean(), vec.std(ddof=0)
+
+
+def edit_dist_dpmat(x, y):
+    """Use matrix dynamic programming to calculate the edit distance between ndarrays x and y"""
+    D = np.zeros((len(x)+1, len(y)+1), dtype=int)
+    range_y = np.arange(1, len(y)+1)
+    range_x = np.arange(1, len(x)+1)
+    D[0, 1:] = range_y
+    D[1:, 0] = range_x
+    for i, j in itertools.product(range_x, range_y):
+        delt = 1 if x[i-1] != y[j-1] else 0
+        D[i, j] = min(D[i-1, j-1] + delt,
+                      D[i-1, j]+1,
+                      D[i, j-1]+1)
+    return D[len(x), len(y)]
+
+
 def make_affinity_matrix(phenotypes):
     """
     Generates an affinity matrix from a list of phenotypes as the squared
