@@ -24,7 +24,7 @@ SELECT DISTINCT
     to_char(B.measurement_date, 'YYYY-MM-DD') AS date,
     C.concept_code AS channel,
     last_value(B.value_as_number) OVER (
-        PARTITION BY C.concept_code, date
+        PARTITION BY id, channel, date
         ORDER BY B.measurement_datetime ROWS
         BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
     ) AS value
