@@ -40,6 +40,13 @@ class PickleCache:
     def __len__(self):
         return len(self.loc.iterdir())
 
+    def __str__(self):
+        return (f'{self.__class__.__name__}(loc={self.loc}, '
+                f'protocol={self.protocol}, suffix={self.suffix})')
+
+    def __repr__(self):
+        return f'<{str(self)}>'
+
     def set(self, key, obj):
         """Pickles `obj` to a file determined by `key`. Returns None"""
         with open(self._make_path(key), 'wb') as file:

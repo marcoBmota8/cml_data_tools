@@ -530,7 +530,8 @@ class Experiment:
             Default 'phenotypes'. Key for the dict of phenotypes.
         """
         phenotypes = self.cache.get(phenotypes_key)
-        aff_matrix = make_affinity_matrix(list(phenotypes.values()))
+        values = [v for (_, v) in sorted(phenotypes.items())]
+        aff_matrix = make_affinity_matrix(values)
         self.cache.set(key, aff_matrix)
 
     @cached_operation
