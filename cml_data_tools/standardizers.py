@@ -70,8 +70,9 @@ class DataframeStandardizer(BaseEstimator, TransformerMixin):
             X.loc[:, col_name] = result
         return X
 
-    def inverse_transform_label(self, name, delta):
-        return self._transformer[name].inverse_transform_label(delta=delta)
+    def inverse_transform_label(self, name, delta, spec=None):
+        return self._transformer[name].inverse_transform_label(delta=delta,
+                                                               spec=spec)
 
     def add_standardizer(self, mode, standardizer, **kwargs):
         """Add a standardizer for a given mode of data.
