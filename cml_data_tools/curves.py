@@ -5,25 +5,14 @@ import numpy as np
 import pandas as pd
 from fast_intensity import infer_intensity, regression
 
-
-__all__ = ['build_patient_curves',
-           'build_all_patient_curves',
-           'CurveSetBuilder',
-           'CurveBuilder',
-           'IntensityCurveBuilder',
-           'RegressionCurveBuilder',
-           'BinaryCurveBuilder',
-           'CumulativeTimeCurveBuilder',
-           'AgeCurveBuilder',
-           'ConstantCurveBuilder',
-           'CumulativeCurveBuilder',
-           'LogCumulativeCurveBuilder',
-           'EverNeverCurveBuilder',
-           'EventCurveBuilder',
-           'BmiCurveBuilder',
-           'SmoothExpandingMax',
-           'ExpandingMean',
-           'Smoothed']
+__all__ = [
+    'build_patient_curves', 'build_all_patient_curves', 'CurveSetBuilder',
+    'CurveBuilder', 'IntensityCurveBuilder', 'RegressionCurveBuilder',
+    'BinaryCurveBuilder', 'CumulativeTimeCurveBuilder', 'AgeCurveBuilder',
+    'ConstantCurveBuilder', 'CumulativeCurveBuilder',
+    'LogCumulativeCurveBuilder', 'EverNeverCurveBuilder', 'EventCurveBuilder',
+    'BmiCurveBuilder', 'SmoothExpandingMax', 'ExpandingMean', 'Smoothed'
+]
 
 
 def build_patient_curves(df, spec, resolution='D'):
@@ -160,15 +149,15 @@ class CurveSetBuilder:
         cache = {}
         curves = {}
         for name, pipe in self.steps.items():
-            result = record     # initial value for all pipes
-            path = tuple()      # lists have append, but are not hashable
+            result = record  # initial value for all pipes
+            path = tuple()  # lists have append, but are not hashable
             for func in pipe:
                 # Cache by the entire path through the pipe so that results are
                 # only shared if they share inputs.  Caching per-func will lead
                 # to incorrect results, and trying to decorate each stage of a
                 # processing pipeline with something like functools.lru_cache
                 # is difficult b/c our inputs are often not hashable.
-                path = path + (func,)
+                path = path + (func, )
                 if path not in cache:
                     cache[path] = func(result, grid=grid)
                 result = cache[path]
@@ -181,7 +170,10 @@ class CurveSetBuilder:
             else:
                 curves[name] = result
         df = pd.concat(curves, axis=1, names=['mode', 'channel'])
-        df = pd.concat([df], keys=[record.patient_id], names=['id'], copy=False)
+        df = pd.concat([df],
+                       keys=[record.patient_id],
+                       names=['id'],
+                       copy=False)
         return df
 
 
@@ -261,26 +253,38 @@ class IntensityCurveBuilder(CurveBuilder):
         super().__init__()
         self.iterations = iterations
 
-    def _build_single_curve(self, data, grid, **kwargs):
+    def _build_single_curve(self, data, grid, smooth=10, **kwargs):
         """Build a single curve from `data` at time points given by `grid`.
 
         Args:
             data: a pandas dataframe with a DatetimeIndex giving the event times.
-            grid: a pandas DatetimeIndex giving the times at which to
-                compute event intensity.
+            grid: a pandas DatetimeIndex giving the equally-spaced times at
+                which to compute event intensity.
+
+            smooth: an integer > 1 (default 10) containing the smallest number
+                of events to smooth over. Larger numbers give smoother curves.
+
             kwargs: Unused.
 
         Returns:
             An ndarray of event intensities the same length as `grid`.
+
         """
-        ref_date = grid[0]
-        grid_deltas = grid - ref_date
-        grid_days = grid_deltas.total_seconds().values / (3600 * 24)
 
-        deltas = data.index - ref_date
-        days = deltas.total_seconds().values / (3600 * 24)
+        # create bin boundaries in units of days such that grid values are the
+        # bin midpoints
+        delta = grid[1] - grid[0]
+        boundaries = np.empty(len(grid) + 1, dtype=float)
+        boundaries[0:-1] = (
+            (grid - grid[0] - 0.5 * delta).values) / np.timedelta64(1, 'D')
+        boundaries[-1] = boundaries[-2] + (delta / np.timedelta64(1, 'D'))
 
-        return infer_intensity(days, grid_days, self.iterations)
+        days = (data.index - grid[0]).values / np.timedelta64(1, 'D')
+
+        return infer_intensity(events=days,
+                               grid=boundaries,
+                               iterations=self.iterations,
+                               min_count=max(smooth, 1))
 
 
 class RegressionCurveBuilder(CurveBuilder):
@@ -601,8 +605,8 @@ class BmiCurveBuilder(RegressionCurveBuilder):
         """
         curves = super().__call__(data, grid, **kwargs)
         if 'Height' in curves.columns and 'Weight' in curves.columns:
-            curves.loc[:, 'BMI'] = (10000 *
-                                    (curves.Weight / (curves.Height * curves.Height)))
+            curves.loc[:, 'BMI'] = (10000 * (curves.Weight /
+                                             (curves.Height * curves.Height)))
         return curves
 
 
@@ -629,6 +633,7 @@ def ExpandingMean():
     """
     def func(curves, **kwargs):
         return curves.expanding(min_periods=1).mean()
+
     return func
 
 
@@ -661,8 +666,8 @@ def SmoothExpandingMax(window='14D'):
 
     """
     def func(curves, **kwargs):
-        return curves.rolling(
-            window).median().expanding(min_periods=1).max()
+        return curves.rolling(window).median().expanding(min_periods=1).max()
+
     return func
 
 
@@ -694,4 +699,5 @@ def Smoothed(window='14D'):
     """
     def func(curves, **kwargs):
         return curves.rolling(window).median()
+
     return func
