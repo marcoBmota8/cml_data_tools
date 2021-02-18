@@ -99,12 +99,13 @@ configs = [
 if __name__ == '__main__':
     import warnings
     warnings.simplefilter('ignore')
-    loc = '/hd1/stilljm/cml_tests/A'
 
-    N_MODEL = 100
+    N_MODEL = 5
     N_PHENT = 500
+    project_name = 'C_05'
+    loc = f'/hd1/stilljm/cml_tests/{project_name}'
 
-    logging.basicConfig(filename='ICA_A.expr.log',
+    logging.basicConfig(filename=f'ICA_{project_name}.log',
                         format='%(asctime)s %(name)s %(message)s',
                         datefmt='%m/%d/%Y %I:%M:%S %p',
                         level=logging.INFO)

@@ -179,7 +179,7 @@ class OnlineCurveStandardizer(DataframeStandardizer):
                 instance._mean = mean
                 instance._stdev = stdev
             elif standardizer is LogGelmanStandardizerWithFallbacks:
-                if np.isnan(stats.base_mean):
+                if np.isnan(stats.base_mean) or stats.base_var == 0:
                     transformer = LinearStandardizer()
                 elif ((stats.curve_max - stats.curve_min) <
                       (1e-6 * (stats.curve_max + stats.curve_min))):

@@ -35,6 +35,8 @@ WHERE (
     B.value_as_number IS NOT NULL
     AND date >= '2000-01-01'
     AND C.count >= 1000
+    AND (C.p01 <= 0 OR B.value_as_number > 0)
+    AND (B.value_as_number < C.high_threshold)
     AND channel != '29463-7'
     AND channel != '8302-2'
     AND channel != '39156-5'
