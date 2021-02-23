@@ -43,6 +43,15 @@ WHERE (
 )
 ORDER BY id, date;
 
+-- Drop measurements that appear in fewer than 10 patients records
+DELETE FROM CML_TEST_MEASUREMENT A
+WHERE A.channel IN (
+    SELECT channel
+    FROM CML_TEST_MEASUREMENT
+    GROUP BY channel
+    HAVING count(distinct id) < 10
+);
+
 CREATE TABLE cml_test_measurement_meta AS
 SELECT
     concept_code AS channel,

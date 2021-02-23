@@ -154,12 +154,22 @@ class IcaPhenotypeModel(BaseEstimator, TransformerMixin):
 
         This function does not apply the scale factors, only computes them.
         """
+        # Scale method 1 (original)
         # Scale such that the signals are in [-1, 1]. Assign the sign so that
         # the largest component is positive.
-        max_pos = expressions[expressions > 0].max(axis=0).fillna(0)
-        max_neg = -(expressions[expressions < 0].min(axis=0)).fillna(0)
-        self._scale_factors = 1 / np.maximum(max_pos, max_neg)
+        #max_pos = expressions[expressions > 0].max(axis=0).fillna(0)
+        #max_neg = -(expressions[expressions < 0].min(axis=0)).fillna(0)
+        #self._scale_factors = 1 / np.maximum(max_pos, max_neg)
 
+        # Scale method 2 (scaling only flips polarity, nothing else)
+        #cols = phenotypes.columns
+        #self._scale_factors = pd.Series(np.ones_like(cols), index=cols)
+
+        # Scale method 3 (scale by stdev)
+        stdev = expressions.std(axis=0).fillna(1)
+        self._scale_factors = 1 / (2 * stdev)
+
+        # Retain flipping of polarity such that max(abs) is always positive
         max_locs = phenotypes.abs().idxmax()
         vals = phenotypes.lookup(max_locs, phenotypes.columns)
         self._scale_factors[vals < 0] *= -1
