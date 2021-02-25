@@ -85,6 +85,8 @@ def _build_std_matrix(meta, cross_sections, standardizer, return_dense=True):
         df = df.reindex(columns=channels)
         dense.append(df)
     dense = pd.concat(dense, copy=False)
+    if return_dense:
+        orig = dense.copy()
     # Standardize the data matrix, then the fill values, then use the fill
     # values to remove all NaN from the standardized data matrix
     std_matrix = standardizer.transform(dense)
@@ -93,7 +95,7 @@ def _build_std_matrix(meta, cross_sections, standardizer, return_dense=True):
     fill = standardizer.transform(fill).loc['fill']
     std_matrix = std_matrix.fillna(fill)
     if return_dense:
-        return dense, std_matrix
+        return orig, std_matrix
     return std_matrix
 
 

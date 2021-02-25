@@ -21,16 +21,16 @@ configs = [
         data=DataSource('cml_test_measurement', sd_access.connect),
         meta=MetaSource('cml_test_measurement_meta', sd_access.connect),
         curve_cls=RegressionCurveBuilder,
-        std_cls=LogGelmanStandardizerWithFallbacks,
-        std_kws={'eps': 1e-6},
+        std_cls=GelmanStandardizerWithFallbacks,
+        std_kws={'eps': 1e-6, 'log_default': False},
     ),
     Config(
         mode='Conditions',
         data=DataSource('cml_test_condition', sd_access.connect),
         meta=MetaSource('cml_test_condition_meta', sd_access.connect),
         curve_cls=IntensityCurveBuilder,
-        std_cls=LogGelmanStandardizerWithFallbacks,
-        std_kws={'eps': 1e-6},
+        std_cls=GelmanStandardizerWithFallbacks,
+        std_kws={'eps': 1e-6, 'log_default': False},
     ),
     Config(
         mode='Medications',
@@ -75,7 +75,7 @@ configs = [
         data=DataSource('cml_test_age', sd_access.connect),
         meta=(('age', 'Age', 0), ),
         curve_cls=AgeCurveBuilder,
-        std_cls=LogGelmanStandardizerWithFallbacks,
+        std_cls=GelmanStandardizerWithFallbacks,
         std_kws={'eps': 1e-6},
     ),
     Config(
@@ -102,7 +102,7 @@ if __name__ == '__main__':
 
     N_MODEL = 5
     N_PHENT = 500
-    project_name = 'C_05'
+    project_name = 'D_05'
     loc = f'/hd1/stilljm/cml_tests/{project_name}'
 
     logging.basicConfig(filename=f'ICA_{project_name}.log',

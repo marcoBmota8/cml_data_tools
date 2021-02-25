@@ -317,7 +317,7 @@ class GelmanStandardizer(SeriesStandardizer):
         return label
 
 
-class LogGelmanStandardizerWithFallbacks(SeriesStandardizer):
+class GelmanStandardizerWithFallbacks(SeriesStandardizer):
     """Creates a standardized log transformer, falling back to:
 
     * LinearStandardizer(), i.e. identity, if all NaN
@@ -326,8 +326,9 @@ class LogGelmanStandardizerWithFallbacks(SeriesStandardizer):
     * LogGelmanStandardizer(log_transform=False) if more than 1% negative
     * LogGelmanStandardizer(log_transform=True) otherwise
     """
-    def __init__(self, eps=0):
+    def __init__(self, eps=0, log_default=True):
         self.eps = eps
+        self.log_default = log_default
         self.log = logging.getLogger(self.__class__.__name__)
 
     @property
@@ -364,8 +365,7 @@ class LogGelmanStandardizerWithFallbacks(SeriesStandardizer):
             self._transformer = GelmanStandardizer(log_transform=False)
 
         else:
-            self._transformer = GelmanStandardizer(log_transform=True,
-                                                   eps=self.eps)
+            self._transformer = GelmanStandardizer(self.log_default, self.eps)
 
         self._transformer.fit(series)
         return self
