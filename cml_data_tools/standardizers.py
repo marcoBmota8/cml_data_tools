@@ -317,7 +317,7 @@ class GelmanStandardizer(SeriesStandardizer):
         return label
 
 
-class GelmanStandardizerWithFallbacks(SeriesStandardizer):
+class LogGelmanStandardizerWithFallbacks(SeriesStandardizer):
     """Creates a standardized log transformer, falling back to:
 
     * LinearStandardizer(), i.e. identity, if all NaN
@@ -380,3 +380,7 @@ class GelmanStandardizerWithFallbacks(SeriesStandardizer):
         if spec is None:
             return self._transformer.inverse_transform_label(delta)
         return self._transformer.inverse_transform_label(delta, spec=spec)
+
+
+# Compat
+GelmanStandardizerWithFallbacks = LogGelmanStandardizerWithFallbacks

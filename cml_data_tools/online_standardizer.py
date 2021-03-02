@@ -6,7 +6,7 @@ import pandas as pd
 from cml_data_tools.standardizers import (DataframeStandardizer,
                                           LinearStandardizer,
                                           GelmanStandardizer,
-                                          GelmanStandardizerWithFallbacks)
+                                          LogGelmanStandardizerWithFallbacks)
 
 
 CurveStats = collections.namedtuple('CurveStats', [
@@ -178,7 +178,7 @@ class OnlineCurveStandardizer(DataframeStandardizer):
                     stdev = np.sqrt(stats.base_var)
                 instance._mean = mean
                 instance._stdev = stdev
-            elif standardizer is GelmanStandardizerWithFallbacks:
+            elif standardizer is LogGelmanStandardizerWithFallbacks:
                 if np.isnan(stats.base_mean) or stats.base_var == 0:
                     transformer = LinearStandardizer()
                 elif ((stats.curve_max - stats.curve_min) <
@@ -188,11 +188,15 @@ class OnlineCurveStandardizer(DataframeStandardizer):
                     transformer = GelmanStandardizer(log_transform=False)
                     transformer._mean = stats.base_mean
                     transformer._stdev = np.sqrt(stats.base_var)
-                else:
+                elif instance.log_default:
                     transformer = GelmanStandardizer(instance.log_default,
                                                      eps=instance.eps)
                     transformer._mean = stats.log_mean
                     transformer._stdev = np.sqrt(stats.log_var)
+                else:
+                    transformer = GelmanStandardizer(log_transform=False)
+                    transformer._mean = stats.base_mean
+                    transformer._stdev = np.sqrt(stats.base_var)
                 instance._transformer = transformer
             self._transformer[channel_name] = instance
         return self

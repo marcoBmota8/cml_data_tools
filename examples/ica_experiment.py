@@ -21,16 +21,16 @@ configs = [
         data=DataSource('cml_test_measurement', sd_access.connect),
         meta=MetaSource('cml_test_measurement_meta', sd_access.connect),
         curve_cls=RegressionCurveBuilder,
-        std_cls=GelmanStandardizerWithFallbacks,
-        std_kws={'eps': 1e-6, 'log_default': False},
+        std_cls=LogGelmanStandardizerWithFallbacks,
+        std_kws={'eps': 1e-6},
     ),
     Config(
         mode='Conditions',
         data=DataSource('cml_test_condition', sd_access.connect),
         meta=MetaSource('cml_test_condition_meta', sd_access.connect),
         curve_cls=IntensityCurveBuilder,
-        std_cls=GelmanStandardizerWithFallbacks,
-        std_kws={'eps': 1e-6, 'log_default': False},
+        std_cls=LogGelmanStandardizerWithFallbacks,
+        std_kws={'eps': 1e-6},
     ),
     Config(
         mode='Medications',
@@ -75,7 +75,7 @@ configs = [
         data=DataSource('cml_test_age', sd_access.connect),
         meta=(('age', 'Age', 0), ),
         curve_cls=AgeCurveBuilder,
-        std_cls=GelmanStandardizerWithFallbacks,
+        std_cls=LogGelmanStandardizerWithFallbacks,
         std_kws={'eps': 1e-6},
     ),
     Config(
@@ -113,6 +113,9 @@ if __name__ == '__main__':
 
     cache = PickleCache(loc=loc)
     experiment = e = Experiment(configs, cache)
+
+    logging.info('Saving configuration objects')
+    cache.set('configs', configs)
 
     logging.info('Fetching data & channel metadata')
     experiment.fetch_data()
