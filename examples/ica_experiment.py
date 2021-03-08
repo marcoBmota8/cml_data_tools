@@ -22,7 +22,7 @@ configs = [
         meta=MetaSource('cml_test_measurement_meta', sd_access.connect),
         curve_cls=RegressionCurveBuilder,
         std_cls=LogGelmanStandardizerWithFallbacks,
-        std_kws={'eps': 1e-6},
+        std_kws={'log_default': False},
     ),
     Config(
         mode='Conditions',
@@ -30,7 +30,6 @@ configs = [
         meta=MetaSource('cml_test_condition_meta', sd_access.connect),
         curve_cls=IntensityCurveBuilder,
         std_cls=LogGelmanStandardizerWithFallbacks,
-        std_kws={'eps': 1e-6},
     ),
     Config(
         mode='Medications',
@@ -75,8 +74,7 @@ configs = [
         data=DataSource('cml_test_age', sd_access.connect),
         meta=(('age', 'Age', 0), ),
         curve_cls=AgeCurveBuilder,
-        std_cls=LogGelmanStandardizerWithFallbacks,
-        std_kws={'eps': 1e-6},
+        std_cls=GelmanStandardizer,
     ),
     Config(
         mode='Bmi',
@@ -84,7 +82,6 @@ configs = [
         meta=(('BMI', 'Clean BMI', 26.12), ),
         curve_cls=RegressionCurveBuilder,
         std_cls=GelmanStandardizer,
-        std_kws={'log_transform': True, 'eps': 0},
     ),
     Config(
         mode='ANA',
@@ -92,7 +89,6 @@ configs = [
         meta=(('ANA titer', 'ANA titer', 8.0), ),
         curve_cls=RegressionCurveBuilder,
         std_cls=GelmanStandardizer,
-        std_kws={'log_transform': True, 'eps': 0},
     ),
 ]
 
@@ -102,7 +98,7 @@ if __name__ == '__main__':
 
     N_MODEL = 5
     N_PHENT = 500
-    project_name = 'D_05'
+    project_name = 'E_05'
     loc = f'/hd1/stilljm/cml_tests/{project_name}'
 
     logging.basicConfig(filename=f'ICA_{project_name}.log',
