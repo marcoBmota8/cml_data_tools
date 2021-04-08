@@ -38,9 +38,11 @@ class IcaPhenotypeModel(BaseEstimator, TransformerMixin):
             Has one row per instance, one column per variable
         """
         self.ica = FastICA(n_components=self.max_phenotypes,
-                           algorithm='parallel', max_iter=10000)
-        self.phenotype_names = [self._get_name(n)
-                                for n in range(self.max_phenotypes)]
+                           algorithm='parallel',
+                           max_iter=10000)
+        self.phenotype_names = [
+            self._get_name(n) for n in range(self.max_phenotypes)
+        ]
         self.channel_names = X.columns
 
         # In this formulation of ICA, X' = AS', where (untransposed) X is the
@@ -128,20 +130,11 @@ class IcaPhenotypeModel(BaseEstimator, TransformerMixin):
             Each cell contains the amount of the given phenotype expressed by
             the row of X.
         """
-        # Center the data if the model is whitened
-        if self.ica.whiten:
-            means = self._means.reindex(index=X.columns)
-            centered_X = X - means
-        else:
-            centered_X = X
 
-        # Remove columns where there are no observations for that channel
-        observed_X = centered_X.loc[:, centered_X.notna().all()]
-        components = (self._raw_components
-                      .reindex(columns=observed_X.columns)
-                      .transpose())
+        raw_expressions = pd.DataFrame(self.ica.transform(X.values),
+                                       index=X.index,
+                                       columns=self.phenotype_names)
 
-        raw_expressions = observed_X.dot(components)
         scaled_expressions = self._scale_expressions(raw_expressions)
         return scaled_expressions
 
