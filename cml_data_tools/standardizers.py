@@ -306,7 +306,9 @@ class GelmanStandardizer(SeriesStandardizer):
     def inverse_transform_label(self, delta, spec=None):
         if self.log_transform:
             orig_frac = self._inverse_transform_ratio(delta)
-            if spec is None:
+            if spec.startswith('+'):
+                spec = spec[1:]
+            elif spec is None:
                 spec = '.2f'
             label = f'x{orig_frac:{spec}}' if orig_frac > 1.0 else f'/{1.0/orig_frac:{spec}}'
         else:

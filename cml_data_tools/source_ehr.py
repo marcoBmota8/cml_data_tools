@@ -17,11 +17,15 @@ def drop_unparseable_dates(df):
     If the df has a date column with non-null values, convert it to pandas
     datetime objects are drop any rows which fail to convert.
     """
-    if 'date' in df.columns and not df['date'].isna().all():
+    #if 'date' in df.columns and not df['date'].isna().all():
+    # Remove second condition: If df['date'] are all None, we want to convert
+    # them to NaT so that ufuncs down the line will handle them correctly
+    if 'date' in df.columns:
         df['date'] = pandas.to_datetime(df['date'],
                                         infer_datetime_format=True,
                                         errors='coerce')
-        df.dropna(subset=['date'], inplace=True)
+        if not df['date'].isna().all():
+            df.dropna(subset=['date'], inplace=True)
     return df
 
 
