@@ -13,6 +13,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 MODE_COLOR = {'Measurements': 'lightcoral',
               'Conditions': 'lightskyblue',
               'Medications': 'palegreen',
+              'Procedures': 'mediumseagreen',
               'Sex': 'mediumvioletred',
               'Race': 'slateblue',
               'Age': 'teal',
@@ -32,7 +33,7 @@ class PhenotypePlotter:
         """Generate labels for the given phenotype series"""
         labels = []
         for c, val in phenotype.iteritems():
-            ex = self.standardizer.inverse_transform_label(c, val, spec='.4g')
+            ex = self.standardizer.inverse_transform_label(c, val, spec='+.4g')
             impact = f'{ex}'
             desc = self.name_descriptions.get(c, 'No Description')
 
@@ -72,6 +73,21 @@ class PhenotypePlotter:
                 return ph[-nmin:]
             return x
         return ph
+
+    def plot_histogram_inset(self, ax, expr):
+        # Plot the expressions inset
+        # https://matplotlib.org/3.3.3/gallery/axes_grid1/inset_locator_demo.html
+        inset = inset_axes(ax, width=1.5, height=1.0, loc=3, borderpad=1.5)
+        inset.hist(x=(expr[expr > 0], expr[expr < 0]),
+                   bins=100, histtype='stepfilled', log=True,
+                   color=('blue', 'red'), alpha=0.4, label=('pos', 'neg'))
+        inset.set_title('Expressions', fontsize='small')
+        inset.tick_params(direction='in', labelsize='x-small', pad=1.2)
+        inset.set_ylim(bottom=0.8, top=None)
+        xlim = max(map(abs, inset.get_xlim()))
+        inset.set_xlim([-xlim, xlim])
+        inset.patch.set_alpha(0.6)
+        return inset
 
     def plot_single_barplot(self, phenotype, expressions, title='',
                             xmax=None, xscale=None, thresh=None):
@@ -133,35 +149,25 @@ class PhenotypePlotter:
         if xscale == 'symlog':
             bars.set_xscale('symlog', linthresh=0.1)
 
-        # Plot the expressions inset
-        # https://matplotlib.org/3.3.3/gallery/axes_grid1/inset_locator_demo.html
-        expr_ax = inset_axes(bars, width=1.0, height=1.0, loc=4, borderpad=2)
-        expr = (expressions[expressions > 0], -expressions[expressions < 0])
-        expr_ax.hist(x=expr,
-                     bins=100,
-                     histtype='stepfilled',
-                     log=True,
-                     color=('blue', 'red'),
-                     alpha=0.4,
-                     label=('pos', 'neg'))
-        expr_ax.legend(loc='upper right', fontsize='x-small', frameon=False)
-        expr_ax.set_title('Expressions')
-        expr_ax.set_ylim(bottom=0.8, top=None)
-        expr_ax.set_alpha(0.6)
-        #expr_ax.set_xticks([])
+        self.plot_histogram_inset(bars, expressions)
 
         fig.suptitle(f'{title or phenotype.name} (thresh={thresh})',
                      fontsize=16)
         return fig, bars
 
-    def plot_single_model(self, model, fname, **kwargs):
+    def plot_multi_barplots(self, phenotypes, expressions, fname, **kwargs):
         with PdfPages(fname) as pdf:
-            for name in model.phenotypes_.columns:
-                phen = model.phenotypes_[name]
-                expr = model.expressions_[name]
-                self.plot_single_barplot(phen, expr, title=name, **kwargs)
+            for name in phenotypes.columns:
+                self.plot_single_barplot(phenotypes[name],
+                                         expressions[name],
+                                         title=name, **kwargs)
                 pdf.savefig()
                 plt.close()
+
+    def plot_single_model(self, model, fname, **kwargs):
+        self.plot_multi_barplots(model.phenotypes_,
+                                 model.expressions_,
+                                 fname, **kwargs)
 
 
 def plot_phenotypes_to_file(phenotypes, expressions, filepath, channel_data,

@@ -39,7 +39,7 @@ class IcaPhenotypeModel(BaseEstimator, TransformerMixin):
         """
         self.ica = FastICA(n_components=self.max_phenotypes,
                            algorithm='parallel',
-                           max_iter=10000)
+                           max_iter=self.max_iter)
         self.phenotype_names = [
             self._get_name(n) for n in range(self.max_phenotypes)
         ]

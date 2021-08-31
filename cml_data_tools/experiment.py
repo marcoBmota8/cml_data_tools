@@ -75,7 +75,7 @@ def _build_std_matrix(meta, cross_sections, standardizer, return_dense=True):
     # channels in the metadata not present in the actual patient data curves;
     # here we select only meta for channels which exist
     channels = list(standardizer.curve_stats.channels)
-    channels = pd.MultiIndex.from_tuples(channels)
+    channels = pd.MultiIndex.from_tuples(channels, names=['mode', 'channel'])
     meta = meta.loc[channels]
     # Use the actual channels from the patient data to reindex the cross
     # sections and then build the full, dense data matrix. The size of dense
@@ -92,7 +92,12 @@ def _build_std_matrix(meta, cross_sections, standardizer, return_dense=True):
     std_matrix = standardizer.transform(dense)
     fill = pd.DataFrame(meta.fill).transpose()
     fill, _ = fill.align(std_matrix, join='right', axis=1)
-    fill = standardizer.transform(fill).loc['fill']
+    # Remove any duplicated channels (may happen if source data has two
+    # descriptions for the same mode/channel pair, for example)
+    # XXX: make sure this only removes the duplicate and not both
+    # fill = fill.loc[:, ~fill.columns.duplicated()]
+    fill = standardizer.transform(fill)
+    fill = fill.loc['fill']
     std_matrix = std_matrix.fillna(fill)
     if return_dense:
         return orig, std_matrix
@@ -426,10 +431,13 @@ class Experiment:
         """
         meta = self.cache.get(meta_key)
         cross_sections = self.cache.get_stream(xs_key)
-        standardizer = self.cache.get(std_key)
-        dense, matrix = _build_std_matrix(meta, cross_sections, standardizer)
+        std = self.cache.get(std_key)
         if save_dense:
+            dense, matrix = _build_std_matrix(meta, cross_sections, std)
             self.cache.set(dense_key, dense)
+        else:
+            matrix = _build_std_matrix(meta, cross_sections, std,
+                                       return_dense=False)
         self.cache.set(key, matrix)
 
     @cached_operation
@@ -587,19 +595,20 @@ class Experiment:
     @cached_operation
     def extract_exemplar_expressions(self, model_keys,
                                      key='exemplar_expressions',
-                                     clustering_key='clustering'):
+                                     clustering_key='clustering',
+                                     n_phenotypes=500):
         """Extract the expressions for exemplars from a given clustering from a
         set of model located at model_keys.
         """
         clustering = self.cache.get(clustering_key)
         expressions = {}
         def gkey(n):
-            return divmod(n, 500)[0]
+            return divmod(n, n_phenotypes)[0]
         centers = sorted(clustering.centers_)
         for model_id, grp in itertools.groupby(centers, key=gkey):
             model = self.cache.get(model_keys[model_id])
             for n in grp:
-                mid, pid = divmod(n, 500)
+                mid, pid = divmod(n, n_phenotypes)
                 assert mid == model_id
                 logging.info(f'Loading expr for center {n}: {mid} {pid}')
                 expressions[n] = model.expressions_[f'ICA-{pid:03}'].copy()

@@ -8,8 +8,8 @@ from fast_intensity import infer_intensity, regression
 __all__ = [
     'build_patient_curves', 'build_all_patient_curves', 'CurveSetBuilder',
     'CurveBuilder', 'IntensityCurveBuilder', 'RegressionCurveBuilder',
-    'BinaryCurveBuilder', 'CumulativeTimeCurveBuilder', 'AgeCurveBuilder',
-    'ConstantCurveBuilder', 'CumulativeCurveBuilder',
+    'BinaryCurveBuilder', 'FuzzedBinaryCurveBuilder', 'CumulativeTimeCurveBuilder',
+    'AgeCurveBuilder', 'ConstantCurveBuilder', 'CumulativeCurveBuilder',
     'LogCumulativeCurveBuilder', 'EverNeverCurveBuilder', 'EventCurveBuilder',
     'BmiCurveBuilder', 'SmoothExpandingMax', 'ExpandingMean', 'Smoothed'
 ]
@@ -417,6 +417,34 @@ class BinaryCurveBuilder(CurveBuilder):
         return super().__call__(data, grid, **kwargs)
 
 
+class FuzzedBinaryCurveBuilder(BinaryCurveBuilder):
+    def __init__(self, *args, fuzz_length=10, **kwargs):
+        self.fuzz_length = fuzz_length
+        super().__init__(*args, **kwargs)
+
+    def _build_single_curve(self, data, grid, **kwargs):
+        freqstr = grid.freqstr
+        all_dates = kwargs.pop('all_dates').round(freqstr).unique()
+        dates = data.index.round(freqstr).unique()
+
+        # Basic curve imputation - uses fill between
+        curve = pd.Series(1.0, index=dates)
+        curve = curve.reindex(index=all_dates, fill_value=0.0, copy=False)
+        curve = curve.reindex(index=grid, method=self.imputation_method)
+        curve.fillna(0.0, inplace=True)
+
+        # Add the fuzz tail for existing dates
+        delta = pd.Timedelta(days=self.fuzz_length)
+        stopdate = grid.max()
+        tail_dates = dates.copy()
+        for x in dates:
+            dts = pd.date_range(x, min(x+delta, stopdate), freq=freqstr)
+            tail_dates = tail_dates.union(dts)
+        curve[tail_dates] = 1.0
+
+        return curve.values
+
+
 class CumulativeTimeCurveBuilder(BinaryCurveBuilder):
     def _build_single_curve(self, data, grid, **kwargs):
         curve = super()._build_single_curve(data, grid, **kwargs)
@@ -439,7 +467,7 @@ class AgeCurveBuilder(CurveBuilder):
         """
         dob = pd.to_datetime(data.value.iloc[0])
         if not dob:
-            self.logger.info('No DOB for %s', data.id.iloc[0])
+            self.logger.info('No DOB for %s', data.ptid.iloc[0])
             dob = grid[0]
         curve = grid.to_series().sub(dob) / np.timedelta64(1, 'Y')
         return curve.values
