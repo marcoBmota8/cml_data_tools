@@ -32,6 +32,12 @@ class Config:
         self.std_cls = std_cls
         self.std_kws = {} if std_kws is None else std_kws
 
+    def __str__(self):
+        return f'Config(mode={self.mode})'
+
+    def __repr__(self):
+        return f'<{str(self)}>'
+
     def valid_source(self):
         """Check if the instance is configured to be a data source"""
         return None not in (self.data, self.meta)

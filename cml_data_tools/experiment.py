@@ -63,6 +63,32 @@ def _sample_from_curves(curves, density):
             yield samples
 
 
+def _fast_reindex(df, channels):
+    # 6x faster than df.reindex
+    base = np.full((len(df), len(channels)), np.nan, dtype=np.float64)
+    _, _, idx = np.intersect1d(df.columns, channels,
+                               assume_unique=True,
+                               return_indices=True)
+    base[:, idx] = df.values
+    return df.index.values, base
+
+
+def _fast_fill_and_expand(dfs, channels):
+    # Much, much faster than pd.concat
+    index_parts = []
+    dense_parts = []
+    for df in dfs:
+        index, dense = _fast_reindex(df, channels)
+        index_parts.append(index)
+        dense_parts.append(dense)
+    indices = np.concatenate(index_parts)
+    names = df.index.names
+    index = pd.MultiIndex.from_tuples(indices, names=names)
+    values = np.concatenate(dense_parts)
+    matrix = pd.DataFrame(values, index=index, columns=channels)
+    return matrix
+
+
 def _build_std_matrix(meta, cross_sections, standardizer, return_dense=True):
     meta = meta.set_index(['mode', 'channel'])
     # An error such as
@@ -70,7 +96,7 @@ def _build_std_matrix(meta, cross_sections, standardizer, return_dense=True):
     #   "float which has no callable log10 method"
     # Indicates that the series in the fill df have dtype "object,"
     # they need to have a float dtype.
-    meta.fill = meta.fill.astype(np.float)
+    meta.fill = meta.fill.astype(np.float64)
     # A KeyError during the standardization process indicates that we have
     # channels in the metadata not present in the actual patient data curves;
     # here we select only meta for channels which exist
@@ -80,11 +106,12 @@ def _build_std_matrix(meta, cross_sections, standardizer, return_dense=True):
     # Use the actual channels from the patient data to reindex the cross
     # sections and then build the full, dense data matrix. The size of dense
     # should be [num cross sections, num channels across all patient data]
-    dense = []
-    for df in cross_sections:
-        df = df.reindex(columns=channels)
-        dense.append(df)
-    dense = pd.concat(dense, copy=False)
+    dense = _fast_fill_and_expand(cross_sections, channels)
+#    dense = []
+#    for df in cross_sections:
+#        df = df.reindex(columns=channels)
+#        dense.append(df)
+#    dense = pd.concat(dense, copy=False)
     if return_dense:
         orig = dense.copy()
     # Standardize the data matrix, then the fill values, then use the fill
