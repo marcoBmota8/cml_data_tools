@@ -124,6 +124,18 @@ class PickleCache:
         except FileNotFoundError:
             raise KeyError(f'{key} not in cache')
 
+    @contextlib.contextmanager
+    def stream_setter(self, key, mode='wb'):
+        """
+        Context manager variant of set_stream that returns a setter function
+        which can be used by the caller instead of accepting the stream of
+        objects to set.
+        """
+        with open(self._make_path(key), mode) as file:
+            def setter(obj):
+                pickle.dump(obj, file, protocol=self.protocol)
+            yield setter
+
     def _make_path(self, key):
         """Utility for transforming a key into a filepath"""
         return (self.loc/key).resolve().with_suffix(self.suffix)

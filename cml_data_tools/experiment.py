@@ -1,4 +1,5 @@
 import collections
+import contextlib
 import functools
 import inspect
 import itertools
@@ -61,6 +62,12 @@ def _sample_from_curves(curves, density):
         if n > 0:
             samples = df.sample(n=n)
             yield samples
+
+
+def _binomial_curve_sample(curves, density, rng=np.random.default_rng()):
+    n = rng.binomial(len(curves.index), density)
+    if n > 0:
+        return curves.sample(n=n)
 
 
 def _fast_reindex(df, channels):
@@ -391,7 +398,9 @@ class Experiment:
     @cached_operation
     def compute_cross_sections(self, key='curve_xs',
                                curves_key='curves',
-                               density=1/365):
+                               density=1/365,
+                               keyset=None,
+                               parallel=False):
         """Subsamples a set of curves at `density`.
 
         Keyword Arguments
@@ -403,10 +412,34 @@ class Experiment:
         density : float
             Default 1/365 (i.e. roughly yearly). Specifies how frequently to
             subsample each patient dataframe.
+        keyset : list[str]
+            A list of keys (only used with parallel option)
+        parallel : bool
+            If True, `keyset` must be a list of keys (`key` is not used), and
+            samples are taken from the curves iterator for each key given,
+            iterating over the set of curves dataframes only once (this can be
+            much more efficient for file-backed caching).  Does not change from
+            single process to multiprocess.
         """
-        curves_iter = self.cache.get_stream(curves_key)
-        samples = _sample_from_curves(curves_iter, density)
-        self.cache.set_stream(key, samples)
+        if not parallel:
+            def stream():
+                for df in self.cache.get_stream(curves_key):
+                    samples = _binomial_curve_sample(df, density)
+                    if samples is not None:
+                        yield samples
+            self.cache.set_stream(key, stream())
+            return
+
+        with contextlib.ExitStack() as stack:
+            stream_setters = [
+                stack.enter_context(self.cache.stream_setter(k))
+                for k in keyset
+            ]
+            for df in self.cache.get_stream(curves_key):
+                for setter in stream_setters:
+                    samples = _binomial_curve_sample(df, density)
+                    if samples is not None:
+                        setter(samples)
 
     @cached_operation
     def make_standardizer(self, key='standardizer', stats_key='curve_stats'):
