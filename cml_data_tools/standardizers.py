@@ -275,9 +275,10 @@ class GelmanStandardizer(SeriesStandardizer):
     dividing by two standard deviations Stat Med, Wiley Online Library, 2008,
     27 , 2865-2873.
     """
-    def __init__(self, log_transform=False, eps=0):
+    def __init__(self, log_transform=False, eps=0, shift=True):
         self.eps = eps
         self.log_transform = log_transform
+        self.shift = shift
 
     @property
     def mean_(self):
@@ -295,12 +296,17 @@ class GelmanStandardizer(SeriesStandardizer):
 
     def transform(self, series):
         x = np.log10(series + self.eps) if self.log_transform else series
-        x = (x - self.mean_) / (2 * self.stdev_)
+        if self.shift:
+            x -= self.mean_
+        x /= 2 * self.stdev_
         return x
 
     def inverse_transform(self, series):
-        x = series * (2 * self.stdev_) + self.mean_
-        x = np.power(10, x) - self.eps if self.log_transform else x
+        x = series * (2 * self.stdev_)
+        if self.shift:
+            x += self.mean_
+        if self.log_transform:
+            x = np.power(10, x) - self.eps
         return x
 
     def inverse_transform_label(self, delta, spec=None):

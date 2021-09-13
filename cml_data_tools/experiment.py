@@ -17,7 +17,6 @@ from cml_data_tools.clustering import (make_affinity_matrix, iter_clusters,
                                        AffinityPropagationClusterer)
 from cml_data_tools.models import IcaPhenotypeModel
 from cml_data_tools.pickle_cache import PickleCache
-from cml_data_tools.plotting import plot_phenotypes_to_file
 from cml_data_tools.source_ehr import (make_data_df, make_meta_df,
                                        aggregate_data, aggregate_meta)
 from cml_data_tools.online_standardizer import (collect_curve_stats,
@@ -678,32 +677,6 @@ class Experiment:
     def combine_models(self):
         # TODO
         pass
-
-    def plot_model(self, pdf_path='phenotypes.pdf',
-                   model_key='model',
-                   meta_key='meta',
-                   std_key='standardizer'):
-        """Plot a model to a file of PDFs. This operation is not cached.
-
-        Keyword Arguments
-        -----------------
-        pdf_path : str or pathlib.Path
-            Default "phenotypes.pdf"; a pathlike object specifying where to
-            plot the learned phenotypes in the model.
-        model_key : str
-            Default 'model'. Cache key for the fit model to plot.
-        meta_key : str
-            Default 'meta'. Key for the column label metadata.
-        std_key : str
-            Default 'standardizer'. Key for a fitted standardizer instance.
-        """
-        path = pathlib.Path(pdf_path).resolve()
-        model = self.cache.get(model_key)
-        meta = self.cache.get(meta_key)
-        standardizer = self.cache.get(std_key)
-        plot_phenotypes_to_file(model.phenotypes_,
-                                model.expressions_,
-                                path, meta, standardizer)
 
     @cached_operation
     def compute_expressions(self, key='expressions', curves_key='curves',
