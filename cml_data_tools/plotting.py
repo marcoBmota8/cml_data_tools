@@ -59,7 +59,7 @@ class PhenotypePlotter:
             ex = self.standardizer.inverse_transform_label(c, val, spec='+.4g')
             impact = f'{ex}'
             desc = self.get_stripped_label_description(c, 46)
-            labels.appen(f'{desc} ({impact})')
+            labels.append(f'{desc} ({impact})')
         return labels
 
     def top_channels(self, phenotype, thresh=None, nmax=60, nmin=10):
