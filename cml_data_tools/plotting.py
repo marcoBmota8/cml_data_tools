@@ -152,19 +152,24 @@ class PhenotypePlotter:
         fig.suptitle(title, fontsize=16)
         return fig, bars
 
-    def plot_multi_barplots(self, phenotypes, expressions, fname, **kwargs):
+    def plot_multi_barplots(self, phenotypes, expressions, fname,
+                            project_name='', **kwargs):
         with PdfPages(fname) as pdf:
             for name in phenotypes.columns:
+                title = f'{project_name} {name}'
                 self.plot_single_barplot(phenotypes[name],
                                          expressions[name],
-                                         title=name, **kwargs)
+                                         title=title,
+                                         **kwargs)
                 pdf.savefig()
                 plt.close()
 
-    def plot_single_model(self, model, fname, **kwargs):
+    def plot_single_model(self, model, fname, project_name='', **kwargs):
         self.plot_multi_barplots(model.phenotypes_,
                                  model.expressions_,
-                                 fname, **kwargs)
+                                 fname,
+                                 project_name,
+                                 **kwargs)
 
 
 ClusterData = collections.namedtuple('ClusterData', 'center indices mean std')
