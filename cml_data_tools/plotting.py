@@ -59,13 +59,13 @@ class PhenotypePlotter:
         desc = textwrap.shorten(desc, width=width, placeholder='...')
         return desc
 
-    def generate_labels(self, phenotype, trunc_at=46):
+    def generate_labels(self, phenotype, trunc_at=100):
         """Generate labels for the given phenotype series"""
         labels = []
         for c, val in phenotype.iteritems():
             ex = self.standardizer.inverse_transform_label(c, val, spec='+.4g')
             impact = f'{ex}'
-            desc = self.get_stripped_label_description(c, 46)
+            desc = self.get_stripped_label_description(c, trunc_at)
             labels.append(f'{desc} ({impact})')
         return labels
 
@@ -119,7 +119,7 @@ class PhenotypePlotter:
 
     def _get_figure_and_axes(self, n_labels):
         """Produces a figure and the major axes for a plot of n_labels"""
-        width = 11
+        width = 13
         # 1 inch for title, 0.5 for margin on either side, and 1 per 4 channels
         height = 1.5 + (n_labels*0.25)
         # add_axes(rect); rect=[left, bottom, width, height], as fraction of
@@ -246,7 +246,7 @@ def cluster_lexical_sort_key(datum):
 class ClusterPlotter(PhenotypePlotter):
     """Generates horizontal bar charts for clusters of phenotypes."""
 
-    def generate_labels(self, exemplar, members, trunc_at=80):
+    def generate_labels(self, exemplar, members, trunc_at=100):
         """Generate labels for the cluster
 
         Includes impact expressions for 0.025 and 0.975 percentiles of the
