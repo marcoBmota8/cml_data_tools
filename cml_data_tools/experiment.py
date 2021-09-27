@@ -669,7 +669,8 @@ class Experiment:
             for n in grp:
                 mid, pid = divmod(n, n_phenotypes)
                 assert mid == model_id
-                logging.info(f'Loading expr for center {n}: {mid} {pid}')
+                logging.debug('Loading expr for center %d: %d %d',
+                              n, mid, pid)
                 expressions[n] = model.expressions_[f'ICA-{pid:03}'].copy()
             del model
         self.cache.set(key, expressions)

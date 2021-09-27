@@ -334,9 +334,10 @@ class LogGelmanStandardizerWithFallbacks(SeriesStandardizer):
     * LogGelmanStandardizer(log_transform=False) if more than 1% negative
     * LogGelmanStandardizer(log_transform=True) otherwise
     """
-    def __init__(self, eps=0, log_default=True):
+    def __init__(self, eps=0, log_default=True, shift=True):
         self.eps = eps
         self.log_default = log_default
+        self.shift = shift
         self.log = logging.getLogger(self.__class__.__name__)
 
     @property
@@ -370,10 +371,12 @@ class LogGelmanStandardizerWithFallbacks(SeriesStandardizer):
             self.log.info(f'Series {series.name} has {num_negative} '
                           f'({num_negative / num_total:.1%}) negative values. '
                           f'Using Gelman standardizer instead.')
-            self._transformer = GelmanStandardizer(log_transform=False)
+            self._transformer = GelmanStandardizer(log_transform=False,
+                                                   shift=self.shift)
 
         else:
-            self._transformer = GelmanStandardizer(self.log_default, self.eps)
+            self._transformer = GelmanStandardizer(self.log_default, self.eps,
+                                                   shift=self.shift)
 
         self._transformer.fit(series)
         return self

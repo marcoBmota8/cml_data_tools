@@ -382,6 +382,7 @@ class ClusterPlotter(PhenotypePlotter):
     def plot_clusters(self, clustering, clusters,
                       phenotypes,
                       expressions,
+                      *,
                       sort_key='score',
                       n_models=10,
                       n_phents=2000,
@@ -475,6 +476,7 @@ class ClusterPlotter(PhenotypePlotter):
                 plt.close()
 
     def plot_cluster_statistics(self, clusters,
+                                *,
                                 n_models=10,
                                 n_phents=2000,
                                 project_name='',
