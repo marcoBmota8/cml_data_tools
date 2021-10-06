@@ -63,7 +63,7 @@ class PhenotypePlotter:
         """Generate labels for the given phenotype series"""
         labels = []
         for c, val in phenotype.iteritems():
-            ex = self.standardizer.inverse_transform_label(c, val, spec='+.4g')
+            ex = self.standardizer.inverse_transform_label(c, val, spec='+.3g')
             impact = f'{ex}'
             desc = self.get_stripped_label_description(c, trunc_at)
             labels.append(f'{desc} ({impact})')
@@ -257,9 +257,9 @@ class ClusterPlotter(PhenotypePlotter):
         vlo = members.quantile(0.025)
         vhi = members.quantile(0.975)
         for c in members.columns:
-            ex = impact_func(c, exemplar[c], spec='+.4g')
-            lo = impact_func(c, vlo[c], spec='+.4g')
-            hi = impact_func(c, vhi[c], spec='+.4g')
+            ex = impact_func(c, exemplar[c], spec='+.3g')
+            lo = impact_func(c, vlo[c], spec='+.3g')
+            hi = impact_func(c, vhi[c], spec='+.3g')
             impact = f'{ex} [{lo}, {hi}]'
             desc = self.get_stripped_label_description(c, trunc_at)
             labels.append(f'{desc} ({impact})')
