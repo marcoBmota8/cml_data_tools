@@ -32,35 +32,35 @@ UNITS_REGEX = re.compile(r'.*\[([^/]*)/?(.*)\]', flags=RE_FLAGS)
 
 UNITS_REPLACEMENT_HEAD = {
     '#': '#',
-    'Entitic mass': 'Ent m',
-    'Entitic volume': 'Ent V',
-    'Enzymatic activity': 'Enzymatic activity',
+    'Entitic mass': 'M',
+    'Entitic volume': 'V',
+    'Enzymatic activity': 'Activity',
     'Interpretation': 'Interp',
     'Length': 'L',
     'Log #': 'Log #',
-    'Mass': 'm',
-    'Mass Ratio': 'm ratio',
-    'Molar ratio': 'mol ratio',
+    'Mass': 'M',
+    'Mass Ratio': 'M/M',
+    'Molar ratio': 'mol/mol',
     'Moles': 'mol',
-    'Multiple of the median': 'x median',
-    'Partial pressure': 'Part. Press.',
-    'Percentile': 'Perc',
-    'Presence': 'Pres',
+    'Multiple of the median': 'Median mult',
+    'Partial pressure': 'PP',
+    'Percentile': '%ile',
+    'Presence': 'Presence',
     'Ratio': 'Ratio',
     'Susceptibility': 'Susc',
-    'Time': 't',
+    'Time': 'T',
     'Titer': 'Titer',
-    'Units': 'Units',
-    'Volume Fraction': 'V Frac',
-    'Volume Rate': 'V Rate',
+    'Units': 'U',
+    'Volume Fraction': 'VF',
+    'Volume Rate': 'VR',
     'Z-score': 'Z'
 }
 
 UNITS_REPLACEMENT_TAIL = {
     '': None,
     'area': 'A',
-    'mass': 'm',
-    'time': 't',
+    'mass': 'M',
+    'time': 'T',
     'volume': 'V'
 }
 
