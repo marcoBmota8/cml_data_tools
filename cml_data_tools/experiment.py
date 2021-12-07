@@ -189,6 +189,35 @@ def _expression_trajectories(expressions, freq, agg):
         yield df
 
 
+def _trunc_to_date(dates, stream):
+    """`dates` is a mapping from patient ID's to dates. For each unique
+    (ptid, date) pair yields a dataframe with that patient's data truncated to
+    the given date. Each yielded dataframe uses the patient ID concatenated to
+    the controlling date as patient ID.
+
+    Arguments
+    ---------
+    dates : Mapping
+        Maps patient ids to lists of dates.
+    stream : Iterator[pd.DataFrame]
+        An iterator yielding pandas dataframes
+    """
+    for df in stream:
+        ptid = df.ptid[0]
+        #for dt in dates.get(ptid, [df.date.max()]):
+        try:
+            ptdates = dates[ptid]
+        except KeyError:
+            # Skip data if not present in `dates` mapping
+            continue
+        else:
+            nats = df[np.isnat(df.date)]
+            for dt in ptdates:
+                sub_df = pd.concat([nats, df[df.date <= dt]])
+                sub_df.ptid = f'{ptid}_{str(dt.date())}'
+                yield sub_df
+
+
 def cached_operation(func):
     default_key = inspect.signature(func).parameters['key'].default
     @functools.wraps(func)
@@ -310,6 +339,31 @@ class Experiment:
         self.cache.set(key, meta)
 
     @cached_operation
+    def filter_data(self, dates, key='filtered_data', data_key='data'):
+        """`dates` is a mapping from patient ID's to dates. For each unique
+        (ptid, date) pair a patient data dataframe from `data_key` with that
+        patient's data truncated to the given date is stored at `key` Each
+        generated dataframe uses the patient ID concatenated to the controlling
+        date as patient ID.
+
+        `key` and `data_key` must be different.
+
+        Arguments
+        ---------
+        dates : Mapping
+            A mapping from patient ID's to lists of dates.
+
+        Keyword Arguments
+        -----------------
+        key : str
+            Default 'filtered_data'. Specifies cache key for the filtered data.
+        data_key : str
+            Default 'data'. Specifies cache key for the underlying dataset.
+        """
+        data = self.cache.get_stream(data_key)
+        self.cache.set_stream(key, _trunc_to_date(dates, data))
+
+    @cached_operation
     def compute_curves(self, key='curves',
                        data_key='data',
                        curve_stats_key='curve_stats',
@@ -361,19 +415,29 @@ class Experiment:
                            for df in data)
 
         if calc_stats:
-            def _intercept_stats(curves_iter):
+            def intercept_stats(curves_iter):
                 stats = None
                 for curves, new_stats in curves_iter:
                     stats = update_curve_stats(stats, new_stats)
                     yield curves
                 self.cache.set(curve_stats_key, stats)
-        else:
-            def _intercept_stats(curves_iter):
-                for curves, _ in curves_iter:
-                    yield curves
+            # Wrap the generator in another generator;
+            # e.g. no work happens at the time of this function call.
+            curves_iter = intercept_stats(curves_iter)
+
+        def count_instances(curves_iter):
+            n_instance = []
+            for curves in curves_iter:
+                n_instance.append(len(curves))
+                yield curves
+            self.cache.set('n_instances', np.array(n_instance))
+
+        # Wrap the generator in another generator;
+        # e.g. no work happens at the time of this function call.
+        curves_iter = count_instances(curves_iter)
 
         # Drives the iterators - i.e. this is when the work happens
-        self.cache.set_stream(key, _intercept_stats(curves_iter))
+        self.cache.set_stream(key, curves_iter)
 
     @cached_operation
     def compute_curve_stats(self, key='curve_stats', curves_key='curves'):
@@ -461,8 +525,7 @@ class Experiment:
     def build_standardized_data_matrix(self, key='std_matrix',
                                        dense_key='data_matrix',
                                        meta_key='meta',
-                                       xs_key='curve_xs',
-                                       std_key='standardizer',
+                                       xs_key='curve_xs', std_key='standardizer',
                                        save_dense=True):
         """Merges a set of dataframes with heterogeneous column labels into a
         single dataframe. Prunes the column labels by what actually exists in
