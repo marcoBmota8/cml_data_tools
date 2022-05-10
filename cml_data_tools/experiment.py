@@ -18,6 +18,7 @@ from cml_data_tools.clustering import (make_affinity_matrix, iter_clusters,
 from cml_data_tools.expand_and_fill import expand_and_fill_cross_sections
 from cml_data_tools.models import IcaPhenotypeModel
 from cml_data_tools.pickle_cache import PickleCache
+from cml_data_tools.sampling import binomial_sample_curves
 from cml_data_tools.source_ehr import (make_data_df, make_meta_df,
                                        aggregate_data, aggregate_meta)
 from cml_data_tools.standardizers import CurveStats, Standardizer
@@ -51,21 +52,6 @@ def _parallel_curve_gen(data, max_workers, spec, resolution, calc_stats):
                 yield from _drain_queue(futures, timeout=1)
         # Block until all futures arrive
         yield from _drain_queue(futures)
-
-
-def _sample_from_curves(curves, density):
-    rng = np.random.default_rng()
-    for df in curves:
-        n = rng.binomial(len(df.index), density)
-        if n > 0:
-            samples = df.sample(n=n)
-            yield samples
-
-
-def _binomial_curve_sample(curves, density, rng=np.random.default_rng()):
-    n = rng.binomial(len(curves.index), density)
-    if n > 0:
-        return curves.sample(n=n)
 
 
 def _to_data_matrix(meta, cross_sections):
@@ -401,7 +387,7 @@ class Experiment:
         if not parallel:
             def stream():
                 for df in self.cache.get_stream(curves_key):
-                    samples = _binomial_curve_sample(df, density)
+                    samples = binomial_sample_curves(df, density)
                     if samples is not None:
                         yield samples
             self.cache.set_stream(key, stream())
@@ -414,7 +400,7 @@ class Experiment:
             ]
             for df in self.cache.get_stream(curves_key):
                 for setter in stream_setters:
-                    samples = _binomial_curve_sample(df, density)
+                    samples = binomial_sample_curves(df, density)
                     if samples is not None:
                         setter(samples)
 
