@@ -54,58 +54,6 @@ def _parallel_curve_gen(data, max_workers, spec, resolution, calc_stats):
         yield from _drain_queue(futures)
 
 
-def _to_data_matrix(meta, cross_sections):
-    channels = meta[['mode', 'channel']]
-    channels = pd.MultiIndex.from_frame(channels)
-    dense_df = pd.concat([df.reindex(columns=channels)
-                          for df in cross_sections],
-                         copy=False)
-    dense_df = dense_df.dropna(axis='columns', how='all')
-    return dense_df
-
-
-def _to_std_data_matrix(meta, data_matrix, standardizer):
-    # Standardize data matrix
-    # NOTE: This step will drop channels that are constant or zero
-    # (i.e. uninformative) from the data matrix (the steps below will
-    # do the same to the metadata)
-    std_data = standardizer.transform(data_matrix)
-    # Meta has cols 'mode', 'channel', 'description', 'fill'
-    # To do the align below we need 'mode' & 'channel' to be the index
-    # (since these are the columns of the data matrix)
-    meta = meta.set_index(['mode', 'channel'])
-    # An error such as
-    #   "TypeError: loop of ufunc does not support argument 0 of type"
-    #   "float which has no callable log10 method"
-    # Indicates that the series in the fill df have dtype "object,"
-    # they need to have a float dtype.
-    fill = pd.DataFrame(meta['fill']).transpose().astype(float)
-    fill, _ = fill.align(std_data, join='right', axis=1)
-    fill_series = standardizer.transform(fill).loc['fill']
-    std_data = std_data.fillna(fill_series)
-    return std_data
-
-
-def _curve_expressions(curves, std, model, freq, agg):
-    for df in curves:
-        X = df.resample(freq, level='date').mean()
-        X = standardizer.transform(X)
-        X = model.transform(X)
-        if agg is not None:
-            X = X.agg(agg)
-        # XXX: pickling loses the name attribute
-        X.name = df.index.get_level_values('id')[0]
-        yield X
-
-
-def _expression_trajectories(expressions, freq, agg):
-    for expr in expressions:
-        X = expr.resample(freq, level='date').agg(agg)
-        # XXX: pickling loses the name attribute
-        X.name = expr.name
-        yield df
-
-
 def _trunc_to_date(dates, stream):
     """`dates` is a mapping from patient ID's to dates. For each unique
     (ptid, date) pair yields a dataframe with that patient's data truncated to
@@ -454,50 +402,6 @@ class Experiment:
         self.cache.set(key, matrix)
 
     @cached_operation
-    def build_data_matrix(self, key='data_matrix',
-                          meta_key='meta',
-                          xs_key='curve_xs'):
-        """Merges a set of dataframes with heterogeneous column labels into a
-        single dataframe.
-
-        Keyword Arguments
-        -----------------
-        key : str
-            Default 'data_matrix'. Key for merged dataframe.
-        meta_key : str
-            Default 'meta'. Key for the column label metadata.
-        xs_key : str
-            Default 'curve_xs'. Key for the stream of dataframes to merge.
-        """
-        meta = self.cache.get(meta_key)
-        cross_sections = self.cache.get_stream(xs_key)
-        dense_df = _to_data_matrix(meta, cross_sections)
-        self.cache.set(key, dense_df)
-
-    @cached_operation
-    def standardize_data_matrix(self, key='std_matrix',
-                                std_key='standardizer',
-                                data_matrix_key='data_matrix',
-                                meta_key='meta'):
-        """Applies a fit standardizer to a data matrix, using fill values as
-        needed from the column label metadata.
-
-        Keyword Arguments
-        -----------------
-        key : str
-            Default 'std_matrix'. Key for standardized dataframe.
-        std_key : str
-            Default 'standardizer'. Key for a fitted standardizer instance.
-        meta_key : str
-            Default 'meta'. Key for the column label metadata.
-        """
-        meta = self.cache.get(meta_key)
-        data_matrix = self.cache.get(data_matrix_key)
-        standardizer = self.cache.get(std_key)
-        std_data = _to_std_data_matrix(meta, data_matrix, standardizer)
-        self.cache.set(key, std_data)
-
-    @cached_operation
     def learn_model(self, key='model',
                     train_data_key='std_matrix',
                     drop_cols=None,
@@ -638,20 +542,3 @@ class Experiment:
     def combine_models(self):
         # TODO
         pass
-
-    @cached_operation
-    def compute_expressions(self, key='expressions', curves_key='curves',
-                            std_key='standardizer', model_key='model',
-                            freq='6D', agg=None):
-        curves = self.cache.get_stream(curves_key)
-        std = self.cache.get(std_key)
-        model = self.cache.get(model_key)
-        expressions = _curve_expressions(curves, std, model, freq, agg)
-        self.cache.set_stream(key, expressions)
-
-    @cached_operation
-    def compute_trajectories(self, key='trajectories', expr_key='expressions',
-                             freq='6MS', agg='max'):
-        expressions = self.cache.get_stream(expr_key)
-        trajectories = _expression_trajectories(expressions, freq, agg)
-        self.cache.set_stream(key, trajectories)
