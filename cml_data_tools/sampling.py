@@ -58,8 +58,8 @@ def dual_sample_curves(curves, density, rng=None):
 
     n = rng.binomial(len(curves.index), density)
     if n > 0:
-        t0 = df.sample(n=n)
-        t1 = df.sample(n=n)
+        t0 = curves.sample(n=n)
+        t1 = curves.sample(n=n)
         t0_dates = t0.index.get_level_values(1)
         t1_dates = t1.index.get_level_values(1)
         dt = t0_dates - t1_dates
