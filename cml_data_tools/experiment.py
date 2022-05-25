@@ -18,7 +18,7 @@ from cml_data_tools.clustering import (make_affinity_matrix, iter_clusters,
 from cml_data_tools.expand_and_fill import expand_and_fill_cross_sections
 from cml_data_tools.models import IcaPhenotypeModel
 from cml_data_tools.pickle_cache import PickleCache
-from cml_data_tools.sampling import binomial_sample_curves
+from cml_data_tools.sampling import binomial_sample_curves, sample_latest
 from cml_data_tools.source_ehr import (make_data_df, make_meta_df,
                                        aggregate_data, aggregate_meta)
 from cml_data_tools.standardizers import CurveStats, Standardizer
@@ -52,6 +52,12 @@ def _parallel_curve_gen(data, max_workers, spec, resolution, calc_stats):
                 yield from _drain_queue(futures, timeout=1)
         # Block until all futures arrive
         yield from _drain_queue(futures)
+
+
+def _omit_insufficient_dataframes(dataframe_iter):
+    for df in dataframe_iter:
+        if len(df.date.dropna().unique()) > 1:
+            yield df
 
 
 def _trunc_to_date(dates, stream):
@@ -203,7 +209,6 @@ class Experiment:
         meta = make_meta_df(aggregate_meta(self.configs))
         self.cache.set(key, meta)
 
-    @cached_operation
     def filter_data(self, dates, key='filtered_data', data_key='data'):
         """`dates` is a mapping from patient ID's to dates. For each unique
         (ptid, date) pair a patient data dataframe from `data_key` with that
@@ -232,6 +237,7 @@ class Experiment:
     def compute_curves(self, key='curves',
                        data_key='data',
                        curve_stats_key='curve_stats',
+                       n_instances_key='n_instances',
                        resolution='D',
                        extra_curve_kws=None,
                        max_workers=0,
@@ -271,6 +277,11 @@ class Experiment:
             spec[config.mode] = func
 
         data = self.cache.get_stream(data_key)
+        # Wrap the data iterator in a filter to remove entries without enough
+        # data points to generate curves over (i.e. patient datasets without at
+        # least two data points located in time are filtered)
+        data = _omit_insufficient_dataframes(data)
+
         if max_workers > 0:
             curves_iter = _parallel_curve_gen(data, max_workers, spec,
                                               resolution, calc_stats)
@@ -297,7 +308,7 @@ class Experiment:
             for curves in curves_iter:
                 n_instance.append(len(curves))
                 yield curves
-            self.cache.set('n_instances', np.array(n_instance))
+            self.cache.set(n_instances_key, np.array(n_instance))
 
         # Wrap the generator in another generator;
         # e.g. no work happens at the time of this function call.
@@ -375,8 +386,8 @@ class Experiment:
 
     @cached_operation
     def build_standardized_data_matrix(self, key='std_matrix',
-                                       meta_key='meta',
                                        xs_key='curve_xs',
+                                       meta_key='meta',
                                        std_key='standardizer'):
         """Merges a set of dataframes with heterogeneous column labels into a
         single dataframe. Prunes the column labels by what actually exists in
@@ -400,6 +411,21 @@ class Experiment:
         cross_sections = self.cache.get_stream(xs_key)
         matrix = expand_and_fill_cross_sections(meta, std, cross_sections)
         self.cache.set(key, matrix)
+
+    @cached_operation
+    def sample_last_curve_points(self, key='final_samples',
+                                 curves_key='curves'):
+        """Subsamples by selecting the final point per set of patient curves.
+
+        Keyword Arguments
+        -----------------
+        key : str
+            Default 'final_samples'. Key for subsampled cross sections'
+        curves_key : str
+            Default 'curves'. Key for input stream of curves.
+        """
+        curves_iter = self.cache.get_stream(curves_key)
+        self.cache.set_stream(key, sample_latest(curves_iter))
 
     @cached_operation
     def learn_model(self, key='model',
