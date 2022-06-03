@@ -64,3 +64,9 @@ def dual_sample_curves(curves, density, rng=None):
         t1_dates = t1.index.get_level_values(1)
         dt = t0_dates - t1_dates
         return (t0, t1, dt)
+
+
+def sample_latest(curves_iter):
+    """Samples the latest value from each curves dataframe in input iter"""
+    for df in curves_iter:
+        yield df.sort_index().tail(1)
