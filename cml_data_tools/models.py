@@ -5,8 +5,9 @@ import pickle
 
 import numpy as np
 import pandas as pd
-from sklearn.decomposition import FastICA
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.decomposition import FastICA
+from sklearn.exceptions import NotFittedError
 
 
 def clusters_to_components(clusters, n=2000):
@@ -128,7 +129,7 @@ class AggregateIcaModel:
         def __init__(self, model):
             self.ica = model.ica
             self.phenotype_names = model.phenotype_names
-            self.scale_factors = model._scale_factors
+            self.scale_factors = model.scale_factors_
 
         def transform(self, X):
             # Tracks the functionality of IcaPhenotypeModel.transform
@@ -168,14 +169,6 @@ class IcaPhenotypeModel(BaseEstimator, TransformerMixin):
         X : pandas.DataFrame
             Has one row per instance, one column per variable
         """
-        self.ica = FastICA(n_components=self.max_phenotypes,
-                           algorithm='parallel',
-                           max_iter=self.max_iter)
-        self.phenotype_names = [
-            self._get_name(n) for n in range(self.max_phenotypes)
-        ]
-        self.channel_names = X.columns
-
         # In this formulation of ICA, X' = AS', where (untransposed) X is the
         # passed parameter `X`.
 
@@ -186,36 +179,33 @@ class IcaPhenotypeModel(BaseEstimator, TransformerMixin):
         # phenotype strengths.
 
         # So a column in A and a column in S are for a single phenotype.
+        self.phenotype_names = [
+            self.get_nth_name(n) for n in range(self.max_phenotypes)
+        ]
+        self.channel_names = X.columns
 
-        # splitting up to conserve memory.
         self.logger.info('Fitting ICA to a {} by {} matrix'.format(*X.shape))
+        self._ica = FastICA(n_components=self.max_phenotypes,
+                            algorithm='parallel',
+                            max_iter=self.max_iter)
         self.ica.fit(X.values)
 
         self.logger.info('Computing S Matrix.')
-        self._raw_expressions = pd.DataFrame(self.ica.transform(X.values),
-                                             index=X.index,
-                                             columns=self.phenotype_names)
+        raw_expressions = pd.DataFrame(self.ica.transform(X.values),
+                                       index=X.index,
+                                       columns=self.phenotype_names)
+
         self.logger.info('Computing A Matrix.')
-        self._raw_phenotypes = pd.DataFrame(self.ica.mixing_,
-                                            index=self.channel_names,
-                                            columns=self.phenotype_names)
+        raw_phenotypes = pd.DataFrame(self.ica.mixing_,
+                                      index=self.channel_names,
+                                      columns=self.phenotype_names)
 
         self.logger.info('Computing scale factors')
-        self._compute_scale_factors(self._raw_phenotypes,
-                                    self._raw_expressions)
+        self.scale_factors_ = self.compute_scale_factors(raw_phenotypes,
+                                                         raw_expressions)
 
-        self.logger.info('Computing centering information')
-        # for centering new data
-        self._means = pd.Series(self.ica.mean_, index=self.channel_names)
-
-        self.logger.info('Computing W Matrix.')
-        self._raw_components = pd.DataFrame(self.ica.components_,
-                                            index=self.phenotype_names,
-                                            columns=self.channel_names)
-
-        self.logger.info('Computing scaled results')
-        self.phenotypes_ = self._scale_phenotypes(self._raw_phenotypes)
-        self.expressions_ = self._scale_expressions(self._raw_expressions)
+        self.phenotypes_ = raw_phenotypes / self.scale_factors_
+        self.expressions_ = raw_expressions * self.scale_factors_
 
         return self
 
@@ -235,16 +225,6 @@ class IcaPhenotypeModel(BaseEstimator, TransformerMixin):
         self.fit(X)
         return self.expressions_
 
-    def _get_name(self, n):
-        """Constructs the name of the n-th phenotype"""
-        return '{}-{:03d}'.format(self.name_stem, n)
-
-    def _compute_raw_expressions(self, X):
-        """Compute the raw expression levels from X, before scaling"""
-        return pd.DataFrame(self.ica.fit_transform(X.values),
-                            index=X.index,
-                            columns=self.phenotype_names)
-
     def transform(self, X):
         """Project the data in X onto the previously-learned phenotypes.
 
@@ -261,15 +241,52 @@ class IcaPhenotypeModel(BaseEstimator, TransformerMixin):
             Each cell contains the amount of the given phenotype expressed by
             the row of X.
         """
-
         raw_expressions = pd.DataFrame(self.ica.transform(X.values),
                                        index=X.index,
                                        columns=self.phenotype_names)
+        return raw_expressions * self.scale_factors_
 
-        scaled_expressions = self._scale_expressions(raw_expressions)
-        return scaled_expressions
+    @property
+    def ica(self):
+        # Basic guard to try to notify user if they use a method relying on a
+        # fit FastICA instance when this model has not been fitted
+        try:
+            return self._ica
+        except AttributeError as err:
+            raise NotFittedError() from err
 
-    def _compute_scale_factors(self, phenotypes, expressions):
+    @property
+    def means_(self):
+        return pd.Series(self.ica.mean_, index=self.channel_names)
+
+    @property
+    def raw_components(self):
+        """Return the W matrix as DataFrame"""
+        return pd.DataFrame(self.ica.components_,
+                            index=self.phenotype_names,
+                            columns=self.channel_names)
+
+    @property
+    def raw_phenotypes(self):
+        """Return the A matrix as DataFrame"""
+        return pd.DataFrame(self.ica.mixing_,
+                            index=self.channel_names,
+                            columns=self.phenotype_names)
+
+    @property
+    def raw_expressions(self):
+        """
+        Unscales the `expressions_` attribute using the `scale_factors_`i to
+        return the S matrix as DataFrame.
+        """
+        return self.expressions_ / self.scale_factors_
+
+    def get_nth_name(self, n):
+        """Constructs the name of the n-th phenotype"""
+        return '{}-{:03d}'.format(self.name_stem, n)
+
+    @staticmethod
+    def compute_scale_factors(phenotypes, expressions):
         """Computes the scale factors for each learned phenotype.
 
         ICA results have an arbitrary sign and scale factor. Here, we assign a
@@ -278,42 +295,13 @@ class IcaPhenotypeModel(BaseEstimator, TransformerMixin):
 
         This function does not apply the scale factors, only computes them.
         """
-        # Scale method 1 (original)
-        # Scale such that the signals are in [-1, 1]. Assign the sign so that
-        # the largest component is positive.
-        #max_pos = expressions[expressions > 0].max(axis=0).fillna(0)
-        #max_neg = -(expressions[expressions < 0].min(axis=0)).fillna(0)
-        #self._scale_factors = 1 / np.maximum(max_pos, max_neg)
-
-        # Scale method 2 (scaling only flips polarity, nothing else)
-        #cols = phenotypes.columns
-        #self._scale_factors = pd.Series(np.ones_like(cols), index=cols)
-
-        # Scale method 3 (scale by stdev)
         stdev = expressions.std(axis=0).fillna(1)
-        self._scale_factors = 1 / (2 * stdev)
-
-        # Retain flipping of polarity such that max(abs) is always positive
+        factors = 1 / (2 * stdev)
+        # Flip polarity such that max(abs) is always positive
         max_locs = phenotypes.abs().idxmax()
         vals = phenotypes.lookup(max_locs, phenotypes.columns)
-        self._scale_factors[vals < 0] *= -1
-
-        # This shouldn't be necessary, but just in case we get a phenotype with
-        # all zeros, we arbitrarily set the scale factor to avoid a divide by
-        # zero error.
-        self._scale_factors.replace(to_replace=0, value=1, inplace=True)
-
-    def _scale_expressions(self, raw_expressions):
-        return raw_expressions * self._scale_factors
-
-    def _scale_phenotypes(self, raw_phenotypes):
-        return raw_phenotypes / self._scale_factors
-
-    def save(self, filepath):
-        with open(filepath, 'wb') as f:
-            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-    @classmethod
-    def load(cls, filepath):
-        with open(filepath, 'rb') as handle:
-            return pickle.load(handle)
+        factors[vals < 0] *= -1
+        # In case we get a phenotype with all zeros, we arbitrarily set the
+        # scale factor to 1.0 to avoid a divide by zero error
+        factors.replace(to_replace=0, value=1, inplace=True)
+        return factors
