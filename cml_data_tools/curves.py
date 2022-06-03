@@ -11,7 +11,8 @@ __all__ = [
     'BinaryCurveBuilder', 'FuzzedBinaryCurveBuilder', 'CumulativeTimeCurveBuilder',
     'AgeCurveBuilder', 'ConstantCurveBuilder', 'CumulativeCurveBuilder',
     'LogCumulativeCurveBuilder', 'EverNeverCurveBuilder', 'EventCurveBuilder',
-    'BmiCurveBuilder', 'SmoothExpandingMax', 'ExpandingMean', 'Smoothed'
+    'BmiCurveBuilder', 'SmoothExpandingMax', 'ExpandingMean', 'Smoothed',
+    'RollingIntensity', 'RollingRegression',
 ]
 
 
