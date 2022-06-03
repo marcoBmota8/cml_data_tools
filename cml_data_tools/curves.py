@@ -729,3 +729,25 @@ def Smoothed(window='14D'):
         return curves.rolling(window).median()
 
     return func
+
+
+class RollingIntensity:
+    """Wraps the IntensityCurveBuilder with a windowed mean"""
+    def __init__(self, window, *args, **kwargs):
+        self.window = window
+        self.inst = IntensityCurveBuilder(*args, **kwargs)
+
+    def __call__(self, *args, **kwargs):
+        curves = self.inst(*args, **kwargs)
+        return curves.rolling(self.window, min_periods=1).mean()
+
+
+class RollingRegression:
+    """Wraps the RegressionCurveBuilder with a windowed mean"""
+    def __init__(self, window, *args, **kwargs):
+        self.window = window
+        self.inst = RegressionCurveBuilder(*args, **kwargs)
+
+    def __call__(self, *args, **kwargs):
+        curves = self.inst(*args, **kwargs)
+        return curves.rolling(self.window, min_periods=1).mean()
