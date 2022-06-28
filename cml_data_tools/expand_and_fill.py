@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 
 
-def expand_and_fill_cross_sections(meta, standardizer, cross_sections):
+def expand_and_fill_cross_sections(meta, standardizer, cross_sections,
+                                   channels=None, *, prune_nan=True):
     """Merges the cross sections present in `cross_sections` using the metadata
     and standardization functions in `meta` and `standardizer`.
 
@@ -18,6 +19,17 @@ def expand_and_fill_cross_sections(meta, standardizer, cross_sections):
         A finite iterator of dataframes indexed by patient ID and date, with
         (mode, channel) columns. No two need have any channels in common.
 
+    Keyword Arguments
+    -----------------
+    channels
+        If not supplied, will be taken from the standardizer curve_stats
+        attribute. Otherwise, this argument will control the channels used to
+        build the output DataFrame.
+    prune_nan : bool
+        Default True. If True, drops uninformative (i.e. all-NaN) channels from
+        the DataFrame before final construction and standardization. Useful
+        primarily when constructing the inputs for ICA models.
+
     Returns
     -------
     pandas.DataFrame
@@ -30,9 +42,14 @@ def expand_and_fill_cross_sections(meta, standardizer, cross_sections):
     # XXX: This work is bundled into subroutines to (a) keep clean namespaces,
     # but also (b) so that we can easily jettison namespaces (and hence
     # references) and not keep the entire chain of partial products in memory
-    channels = standardizer.curve_stats.channels
+    if channels is None:
+        channels = standardizer.curve_stats.channels
+
     matrix, index = construct_matrix(cross_sections, channels)
-    matrix, channels = prune_nan_channels(matrix, channels)
+
+    if prune_nan:
+        matrix, channels = prune_nan_channels(matrix, channels)
+
     matrix = assemble_dataframe(matrix, index, channels)
 
     # Q: Would a numpy based transform that circumvents pandas be faster?
@@ -57,10 +74,10 @@ def construct_matrix(cross_sections, channels):
     index_parts = []
     for df in cross_sections:
         dense = np.full((len(df), n_channels), np.nan, dtype=np.float64)
-        _, _, idx = np.intersect1d(df.columns, channels,
-                                   assume_unique=True,
-                                   return_indices=True)
-        dense[:, idx] = df.values
+        _, val_idx, idx = np.intersect1d(df.columns, channels,
+                                         assume_unique=True,
+                                         return_indices=True)
+        dense[:, idx] = df.values[:, val_idx]
         dense_parts.append(dense)
         index_parts.append(df.index.values)
     dense = np.concatenate(dense_parts)
