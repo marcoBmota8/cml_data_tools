@@ -11,11 +11,11 @@ def _drain_queue(q, timeout=None):
         pass
 
 
-def parallelize_func(func, *func_args, *, max_workers=8):
+def parallelize_func(func, data, *func_args, max_workers=8):
     with ProcessPoolExecutor(max_workers=max_workers) as pool:
         futures = set()
         for df in data:
-            fut = pool.submit(func, *func_args)
+            fut = pool.submit(func, df, *func_args)
             futures.add(fut)
             if len(futures) > 100:
                 yield from _drain_queue(futures, timeout=1)

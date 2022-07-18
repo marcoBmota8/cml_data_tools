@@ -34,6 +34,10 @@ def _curve_gen_worker(df, spec, resolution, calc_stats):
     return curves, stats
 
 
+def _channel_count_worker(df):
+    return {k: len(v) for k, v in df.groupby(['mode', 'channel'])}
+
+
 def _omit_insufficient_dataframes(dataframe_iter):
     for df in dataframe_iter:
         if len(df.date.dropna().unique()) > 1:
@@ -150,7 +154,8 @@ class Experiment:
         self.cache = cache
 
     @cached_operation
-    def fetch_data(self, key='data', min_inst=2, min_span=182):
+    def fetch_data(self, key='data', min_inst=2, min_span=182,
+                   counts_key='channel_counts'):
         """Download patient data
 
         Aggregates by patient ID and converts to pandas.DataFrame before
@@ -175,7 +180,40 @@ class Experiment:
             df for df in data_iter
             if len(df['date'][~np.isnan(df['date'])].unique()) >= min_inst
         )
-        self.cache.set_stream(key, data_iter)
+        def intercept_counts(stream):
+            grp_key = ['mode', 'channel']
+            counts = []
+            for df in stream:
+                counts.append(_channel_count_worker(df))
+                yield df
+            self.cache.set(counts_key, counts)
+        self.cache.set_stream(key, intercept_counts(data_iter))
+
+    @cached_operation
+    def count_channels(self, key='channel_counts',
+                       data_key='data',
+                       max_workers=0):
+        """Count the channels per patient in the dataset.
+
+        Keyword Arguments
+        -----------------
+        key : str
+            Default 'channel_counts'. Specifies cache key for the counts.
+        data_key : str
+            Default 'data'. Specifies the cache key for the patient dataframes.
+        max_workers : int
+            Default 0. If above zero, specifies the number of subprocesses to
+            use in generating curves in parallel. At default of zero, no
+            parallelization is used.
+        """
+        counts = []
+        data = self.cache.get_stream(data_key)
+        if max_workers > 0:
+            counts = list(parallelize_func(_channel_count_worker, data,
+                                           max_workers=max_workers))
+        else:
+            counts = [_channel_count_worker(df) for df in data]
+        self.cache.set(key, counts)
 
     @cached_operation
     def fetch_meta(self, key='meta'):
@@ -264,8 +302,8 @@ class Experiment:
 
         if max_workers > 0:
             curves_iter = parallelize_func(
-                _curve_gen_worker,
-                data, spec, resolution, calc_stats,
+                _curve_gen_worker, data,
+                spec, resolution, calc_stats,
                 max_workers=max_workers,
             )
         # Single core execution
