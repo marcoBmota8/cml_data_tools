@@ -17,6 +17,7 @@ from cml_data_tools.clustering import (make_affinity_matrix, iter_clusters,
                                        AffinityPropagationClusterer)
 from cml_data_tools.expand_and_fill import expand_and_fill_cross_sections
 from cml_data_tools.models import IcaPhenotypeModel
+from cml_data_tools.parallelize import parallelize_func
 from cml_data_tools.pickle_cache import PickleCache
 from cml_data_tools.sampling import binomial_sample_curves, sample_latest
 from cml_data_tools.source_ehr import (make_data_df, make_meta_df,
@@ -24,34 +25,13 @@ from cml_data_tools.source_ehr import (make_data_df, make_meta_df,
 from cml_data_tools.standardizers import CurveStats, Standardizer
 
 
-def _drain_queue(q, timeout=None):
-    try:
-        for future in as_completed(q, timeout=timeout):
-            yield future.result()
-            q.remove(future)
-    except TimeoutError:
-        pass
-
-
-def _worker(df, spec, resolution, calc_stats):
+def _curve_gen_worker(df, spec, resolution, calc_stats):
     curves = build_patient_curves(df, spec, resolution)
     if calc_stats:
         stats = CurveStats.from_curves(curves)
     else:
         stats = None
     return curves, stats
-
-
-def _parallel_curve_gen(data, max_workers, spec, resolution, calc_stats):
-    with ProcessPoolExecutor(max_workers=max_workers) as pool:
-        futures = set()
-        for df in data:
-            fut = pool.submit(_worker, df, spec, resolution, calc_stats)
-            futures.add(fut)
-            if len(futures) > 100:
-                yield from _drain_queue(futures, timeout=1)
-        # Block until all futures arrive
-        yield from _drain_queue(futures)
 
 
 def _omit_insufficient_dataframes(dataframe_iter):
@@ -283,12 +263,17 @@ class Experiment:
         data = _omit_insufficient_dataframes(data)
 
         if max_workers > 0:
-            curves_iter = _parallel_curve_gen(data, max_workers, spec,
-                                              resolution, calc_stats)
+            curves_iter = parallelize_func(
+                _curve_gen_worker,
+                data, spec, resolution, calc_stats,
+                max_workers=max_workers,
+            )
         # Single core execution
         else:
-            curves_iter = (_worker(df, spec, resolution, calc_stats)
-                           for df in data)
+            curves_iter = (
+                _curve_gen_worker(df, spec, resolution, calc_stats)
+                for df in data
+            )
 
         if calc_stats:
             def intercept_stats(curves_iter):
@@ -388,7 +373,8 @@ class Experiment:
     def build_standardized_data_matrix(self, key='std_matrix',
                                        xs_key='curve_xs',
                                        meta_key='meta',
-                                       std_key='standardizer'):
+                                       std_key='standardizer',
+                                       prune_nan=False):
         """Merges a set of dataframes with heterogeneous column labels into a
         single dataframe. Prunes the column labels by what actually exists in
         the curve data (taken from the fit standardizer), and then finally
@@ -405,11 +391,14 @@ class Experiment:
             Default 'curve_xs'. Key for the stream of dataframes to merge.
         std_key : str
             Default 'standardizer'. Key for a fitted standardizer instance.
+        prune_nan : bool
+            Default False. Cf. `expand_and_fill_cross_sections`.
         """
         meta = self.cache.get(meta_key)
         std = self.cache.get(std_key)
         cross_sections = self.cache.get_stream(xs_key)
-        matrix = expand_and_fill_cross_sections(meta, std, cross_sections)
+        matrix = expand_and_fill_cross_sections(meta, std, cross_sections,
+                                                prune_nan=prune_nan)
         self.cache.set(key, matrix)
 
     @cached_operation
