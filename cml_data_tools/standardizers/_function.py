@@ -357,6 +357,15 @@ class CurveStats(collections.namedtuple('CurveStats', _fields)):
             index = pd.MultiIndex.from_tuples(index)
         return pd.DataFrame(data=data, index=index).T
 
+    def apply_mask(self, mask):
+        """Returns a new instance applying the given mask to each attribute"""
+        return self.__class__(*(attr[mask] for attr in self))
+
+    def select_modes(self, modes):
+        """Returns a new instance keeping only channels from the given modes"""
+        mask = np.array([m in modes for (m, _) in self.channels])
+        return self.apply_mask(mask)
+
 
 class AffineTransform:
     """A simple transformation bundled with its inverse transformation.

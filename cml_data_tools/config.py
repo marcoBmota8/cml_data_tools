@@ -54,3 +54,10 @@ class Config:
         """Instantiate a standardizer class"""
         kwargs = collections.ChainMap(kws, self.std_kws)
         return self.std_cls(**kwargs)
+
+    @classmethod
+    def clone(cls, other):
+        return cls(other.mode, other.data, other.meta,
+                   other.curve_cls, other.std_cls,
+                   other.curve_kws, other.std_kws,
+                   other.std_params)
