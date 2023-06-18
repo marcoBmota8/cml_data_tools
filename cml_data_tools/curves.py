@@ -663,7 +663,7 @@ class CategoricalCurveBuilder(CurveBuilder):
     Args:
         -imputation_method: {'bfill', 'ffill', 'nearest', None} the interpolation
             method to be used to fill dates in the intervals between observed
-            dates in `all_dates`. 'bfill' fills with the next observed value,
+            dates of distinct rounded test results. 'bfill' fills with the next observed value,
             causing any transition to be made just after the first observed
             date. 'ffill' fills with the previous observed value, causing any
             transition to be made just before the second observed
@@ -681,9 +681,9 @@ class CategoricalCurveBuilder(CurveBuilder):
         """Build all binary curves from `data` at time points given by `grid`.
 
         This builder estimates whether a lab result is 'active' (curve=1) or
-        'absent' (curve=0) at the points in `grid`. Informayion for such inference is
-        sourced from the observationsa nd times in `data`.
-        The constructured binary curves are built for each unique test result category
+        'absent' (curve=0) at the points in `grid`. Information for such inference is
+        sourced from the observations and times in `data`.
+        The constructed binary curves are built for each unique test result category
         present in 'data' with the following assumptions:
 
             i) In case of overlap of distinct results during rounding to the desired temporal 
