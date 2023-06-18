@@ -1,3 +1,7 @@
+# Forked repo clm_data_tools from https://github.com/ComputationalMedicineLab/cml_data_tools/blob/master/cml_data_tools/curves.py
+# Author: Marco Barbero Mota
+# Date: June 2023
+
 import collections.abc
 import logging
 
@@ -11,8 +15,8 @@ __all__ = [
     'BinaryCurveBuilder', 'FuzzedBinaryCurveBuilder', 'CumulativeTimeCurveBuilder',
     'AgeCurveBuilder', 'ConstantCurveBuilder', 'CumulativeCurveBuilder',
     'LogCumulativeCurveBuilder', 'EverNeverCurveBuilder', 'EventCurveBuilder',
-    'BmiCurveBuilder', 'SmoothExpandingMax', 'ExpandingMean', 'Smoothed',
-    'RollingIntensity', 'RollingRegression',
+    'BmiCurveBuilder','CategoricalCurveBuilder', 'SmoothExpandingMax', 'ExpandingMean',
+    'Smoothed', 'RollingIntensity', 'RollingRegression',
 ]
 
 
@@ -637,6 +641,95 @@ class BmiCurveBuilder(RegressionCurveBuilder):
             curves.loc[:, 'BMI'] = (10000 * (curves.Weight /
                                              (curves.Height * curves.Height)))
         return curves
+
+class CategoricalCurveBuilder(CurveBuilder):
+    """This builder cannonical example is a lab test with  
+    several categorical results that are mutually exclusive in time. 
+
+    The builder considers a mode that includes all categorical labs. 
+    In its current form, the builder takes as input channels each categorical lab
+    which can have an arbitrary number of nominal categories (no order). 
+    The lab result for an individual can change over time in value and mutual exclusivity is assumed. 
+    The builder demultiplexes the categorical information into as many binary curves as categories
+    are present in the input data. Each output curve is named after the category string and the channel name.
+      
+    Similarly to medications, we only observe a test results when these are performed. 
+    Given the mutual exclusivity property, a transition to a different value marks 
+    the abscence of the previous one. However, we must infer when such transitions happens.
+    We consider the same three transition inference approaches as with medications: 
+    rigth after the last recorded value, righ before the last observed test value or at their midpoint. 
+    By default we assume the later. Such default behavior can be changed through the imputation_method argument.
+     
+    Args:
+        -imputation_method: {'bfill', 'ffill', 'nearest', None} the interpolation
+            method to be used to fill dates in the intervals between observed
+            dates in `all_dates`. 'bfill' fills with the next observed value,
+            causing any transition to be made just after the first observed
+            date. 'ffill' fills with the previous observed value, causing any
+            transition to be made just before the second observed
+            date. 'nearest' (default) fills with the nearest observed value,
+            causing any transition to be made at the midpoint. `None` (the
+            keyword, not the string) provides no interpolation between dates -
+            any date not specifically observed as present is computed as
+            absent. """
+    
+    def __init__(self, imputation_method='nearest'):
+        super().__init__()
+        self.imputation_method = imputation_method
+    
+    def __call__(self, data, grid, **kwargs):
+        """Build all binary curves from `data` at time points given by `grid`.
+
+        This builder estimates whether a lab result is 'active' (curve=1) or
+        'absent' (curve=0) at the points in `grid`. Informayion for such inference is
+        sourced from the observationsa nd times in `data`.
+        The constructured binary curves are built for each unique test result category
+        present in 'data' with the following assumptions:
+
+            i) In case of overlap of distinct results during rounding to the desired temporal 
+            curve resolution, the last lab result is kept. (e.g. with a resolution >'1D' if 
+            for a single day two records are present we assume the last is the correct one as if
+            the first was, for example, a data entry error).
+        
+            ii) Mutual exclusivity is assumed. After rounding, a change in the lab result is
+            considered an observation of absence for the previous one. Curve values between adjacent 
+            rounded observations are interpolated using `self.imputation_method`.
+
+        Args:
+            data: a pandas dataframe containing columns 'channel' and 'value' that 
+            contains the name of the test and the result category, and a DatetimeIndex 
+            indicating the date at which the test result was observed.
+
+            grid: a pandas DatetimeIndex giving the times at which to
+                estimate the binary value.
+
+            kwargs: not used.
+        """
+
+        freqstr = grid.freqstr
+    
+        channel = data['channel'].unique()[0]
+
+        # Generate curve
+        # The last chornological value is kept for each group of values rounded to the same date
+        cat_curve = data['value'].sort_index().groupby(data.sort_index().index.round(freqstr)).last()
+
+        # Fill intervals between observations.
+        cat_curve = cat_curve.reindex(index=grid, method=self.imputation_method)
+
+        # Dummified curves for each present category
+        cat_curve = pd.get_dummies(cat_curve.to_frame(), prefix=[channel]) 
+
+        curveset = {'date':grid}
+        #Assign all observed binary curves 
+        for curve in cat_curve.columns:
+            curveset[curve] = cat_curve[curve] 
+
+        curve_df = pd.DataFrame.from_dict(curveset)
+        curve_df.set_index('date', inplace = True)
+
+        return  curve_df
+    
 
 
 def ExpandingMean():
