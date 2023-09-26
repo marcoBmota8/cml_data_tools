@@ -1,7 +1,3 @@
-# Forked repo clm_data_tools from https://github.com/ComputationalMedicineLab/cml_data_tools/blob/master/cml_data_tools/curves.py
-# Author: Marco Barbero Mota
-# Date: June 2023
-
 import collections.abc
 import logging
 
@@ -654,10 +650,10 @@ class CategoricalCurveBuilder(CurveBuilder):
     are present in the input data. Each output curve is named after the category string and the channel name.
       
     Similarly to medications, we only observe a test results when these are performed. 
-    Given the mutual exclusivity property, a transition to a different value marks 
+    Given the mutual exclusivity property within a channel, a transition to a different value marks 
     the abscence of the previous one. However, we must infer when such transitions happens.
     We consider the same three transition inference approaches as with medications: 
-    rigth after the last recorded value, righ before the last observed test value or at their midpoint. 
+    rigth after the first recorded value ('bfill'), righ before the last observed test ('ffill') value or at their midpoint ('nearest'). 
     By default we assume the later. Such default behavior can be changed through the imputation_method argument.
      
     Args:
