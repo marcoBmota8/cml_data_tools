@@ -6,3 +6,4 @@ cache/
 *.out
 *.log
 .ipynb_checkpoints/
+build/
