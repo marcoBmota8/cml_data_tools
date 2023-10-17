@@ -204,11 +204,11 @@ class CurveStats(collections.namedtuple('CurveStats', _fields)):
                            other.curve_min[other_idx])
 
         # Mask for prev values not in current (i.e. unchanged vals)
-        p_mask = np.ones(self.channels.shape, dtype=np.bool)
+        p_mask = np.ones(self.channels.shape, dtype=bool)
         p_mask[self_idx] = False
 
         # Mask for curr values not in previous (i.e. unchanged vals)
-        c_mask = np.ones(other.channels.shape, dtype=np.bool)
+        c_mask = np.ones(other.channels.shape, dtype=bool)
         c_mask[other_idx] = False
 
         # Recombine the updated, unchanged, and new values
