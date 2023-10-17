@@ -22,7 +22,6 @@ def drop_unparseable_dates(df):
     # them to NaT so that ufuncs down the line will handle them correctly
     if 'date' in df.columns:
         df['date'] = pandas.to_datetime(df['date'],
-                                        infer_datetime_format=True,
                                         errors='coerce')
         if not df['date'].isna().all():
             df.dropna(subset=['date'], inplace=True)
