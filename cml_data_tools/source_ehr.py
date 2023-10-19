@@ -33,6 +33,7 @@ def make_data_df(rows, drop_dates_by='mode'):
     df = pandas.DataFrame.from_records(list(rows), columns=DATA_COLS)
     df = df.infer_objects()
     df = df.groupby(by=drop_dates_by).apply(drop_unparseable_dates)
+    df = df.reset_index(drop=True)
     return df
 
 
