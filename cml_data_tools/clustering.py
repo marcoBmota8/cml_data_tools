@@ -5,8 +5,6 @@ import itertools
 import time
 
 import numpy as np
-# This must be our fork of pySAP
-from pysapc import SAP
 from scipy.sparse import coo_matrix
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.metrics.pairwise import cosine_similarity
@@ -137,6 +135,8 @@ class AffinityPropagationClusterer:
         self.random_state = random_state
 
     def fit(self, S):
+        # This must be our fork of pySAP
+        from pysapc import SAP
         S = coo_matrix(S, copy=self.copy, dtype=np.float)
 
         if self.random_state is not None:
