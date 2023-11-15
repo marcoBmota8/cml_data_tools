@@ -470,7 +470,7 @@ class AgeCurveBuilder(CurveBuilder):
         if not dob:
             self.logger.info('No DOB for %s', data.ptid.iloc[0])
             dob = grid[0]
-        curve = grid.to_series().sub(dob) / np.timedelta64(1, 'Y')
+        curve = grid.to_series().sub(dob).div(pd.Timedelta(days=365.25))
         return curve.values
 
 
