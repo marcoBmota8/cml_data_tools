@@ -11,7 +11,8 @@ with open(readme_path, encoding='utf-8') as file:
 setup(
     name='cml-data-tools',
     description=__doc__.strip(),
-    url='',
+    url='https://github.com/marcoBmota8/cml_data_tools/tree/master',
+    py_modules=['cml_data_tools'],
     license='BSD',
     classifiers=[
         'Development Status :: 3 - Alpha',
