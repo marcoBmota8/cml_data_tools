@@ -717,7 +717,10 @@ class CategoricalCurveBuilder(CurveBuilder):
 
             data_channel = data[data['channel']==channel]
 
-            # The last chronological value is kept for each group of values rounded to the same date
+            # The last chronological value is kept for each group of values rounded to the same date given the 
+            # `grid` resolution. This only happens when the requested resolution is larger than the interevent time. 
+            # This assumption is made because some measurements may be repeated several times in a short span of time
+            # under the suspicion of a lab error. Normally, the last one is considered the "good" one.
             cat_curve = data_channel['value'].groupby(data_channel.index.round(freqstr)).last()
 
             # Fill intervals between observations.
