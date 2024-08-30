@@ -680,7 +680,7 @@ class CategoricalCurveBuilder(CurveBuilder):
         'absent' (curve=0) at the points in `grid`. Information for such inference is
         sourced from the observations and times in `data`.
         The constructed binary curves are built for each unique test result category
-        within each channel (i.e. individual test) present in 'data' with the following assumptions:
+        within each channel present in 'data' with the following assumptions:
 
             i) In case of overlap of distinct results during rounding to the desired temporal 
             curve resolution, the last lab result is kept. (e.g. with a resolution >'1D' if 
@@ -692,9 +692,8 @@ class CategoricalCurveBuilder(CurveBuilder):
             rounded observations are interpolated using `self.imputation_method`.
 
         Args:
-            data: a pandas dataframe containing columns 'channel' and 'value' that 
-            contains the name of the test and the result category, and a DatetimeIndex 
-            indicating the date at which the test result was observed.
+            data: a pandas dataframe with a DatetimeIndex containing columns 'channel' and 'value' that 
+            contains the name of the test and the result category.
 
             grid: a pandas DatetimeIndex giving the times at which to
                 estimate the binary value.
