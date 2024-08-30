@@ -744,6 +744,65 @@ class CategoricalCurveBuilder(CurveBuilder):
 
         return  all_curves_df
     
+class ValueCurveBuilder(CurveBuilder):
+    """This builder cannonical example is a measurement (e.g. laboratory test, BMI, etc)
+    numerical value, normally continuous.
+
+    The builder takes as input the discrete observations along its dates and estimates
+    the transition time from current to the subsequent observation.
+    We consider the same three transition inference approaches as with medications: 
+    rigth after the first recorded value ('bfill'), right before the last observed test ('ffill') also known as 
+    pushed-forward, and midpoint ('nearest') which states the transition halfway between subsequent observations.
+    By default we assume the later. Such default behavior can be changed through the imputation_method argument.
+     
+    Args:
+        -imputation_method: {'bfill', 'ffill', 'nearest', None} the interpolation
+            method to be used to fill dates in the intervals between observed
+            dates of distinct rounded test results. 
+            'bfill' fills with the next observed value,
+            causing any transition to be made just after the first observed
+            date. 'ffill' fills with the previous observed value, causing any
+            transition to be made just before the second observed
+            date. 'nearest' (default) fills with the nearest observed value,
+            causing any transition to be made at the midpoint. `None` (the
+            keyword, not the string) provides no interpolation between dates -
+            any date not specifically observed as present is computed as
+            absent. """
+    
+    def __init__(self, imputation_method='nearest'):
+        super().__init__()
+        self.imputation_method = imputation_method
+    
+    def __call__(self, data, grid, **kwargs):
+        """Build all curves from `data` at time points given by `grid`.
+
+        This builder estimates the 'active' value at the points in `grid`. Information for such inference is
+        sourced from the observations and times in `data`.
+        Args:
+            data: a pandas dataframe with the 'value' column that 
+            contains the data for the channel and a DatetimeIndex 
+            indicating the date at which each result was observed.
+
+            grid: a pandas DatetimeIndex giving the times at which to
+                estimate the binary value.
+
+            kwargs: not used.
+        """
+
+        # Ensure that the index is a DatetimeIndex
+        assert isinstance(data.index, pd.DatetimeIndex), "The DataFrame index is not a DatetimeIndex"
+
+        freqstr = grid.freqstr
+
+        data.sort_index(inplace = True) # Sort data according to event date (index)
+
+        # The last chronological value is kept for each group of values rounded to the same date
+        # This assumption is made because some measurements may be repeated several times in a short span of time
+        # under the suspicion of a lab error
+        curve = data['value'].groupby(data.index.round(freqstr)).last()
+
+        # Fill intervals between observations.
+        return curve.reindex(index=grid, method=self.imputation_method)
 
 
 def ExpandingMean():
