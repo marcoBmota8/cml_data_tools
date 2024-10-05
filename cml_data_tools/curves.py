@@ -672,24 +672,64 @@ class CategoricalCurveBuilder(CurveBuilder):
     def __init__(self, imputation_method='nearest'):
         super().__init__()
         self.imputation_method = imputation_method
-    
-    def __call__(self, data, grid, **kwargs):
-        """Build all binary curves from `data` at time points given by `grid`.
+        
+    def _build_single_curve(self, data, grid, **kwargs):
+        """Build a single curveset from `data` at time points given by `grid`.
 
-        This builder estimates whether a lab result is 'active' (curve=1) or
-        'absent' (curve=0) at the points in `grid`. Information for such inference is
-        sourced from the observations and times in `data`.
-        The constructed binary curves are built for each unique test result category
-        within each channel present in 'data' with the following assumptions:
+        Args:
+            data: a pandas dataframe with a DatetimeIndex containing the times
+                of events for this channel. All other columns are ignored.
+            grid: a pandas Index of timestamps giving the times at which to
+                estimate the binary value.
+        kwargs: 
+            channel_name: name of the categorical measurement or channel
+        
+        Returns:
+            A pandas DataFrame of the same length as `grid` with binary columns for each category 
+            of the channel.
+            Value is 1.0 on dates when that category is inferred as active, 0.0 when inactive.
+        """
+        
+        # Ensure that the index is a DatetimeIndex
+        assert isinstance(data.index, pd.DatetimeIndex), "The DataFrame index is not a DatetimeIndex"
+
+        freqstr = grid.freqstr
+        
+        channel_name = kwargs.pop('channel_name')
+
+        data.sort_index(inplace = True) # Sort data according to event date (index)
+
+        # The last chronological value is kept for each group of values rounded to the same date given the 
+        # `grid` resolution. This only happens when the requested resolution is larger than the interevent time. 
+        # This assumption is made because some measurements may be repeated several times in a short span of time 
+        # due to several reasonse, for example under the suspicion of a lab error. Normally, the last one is considered the "good" one
+        cat_curves = data['value'].groupby(data.index.round(freqstr)).last()
+
+        # Fill intervals between observations
+        cat_curves = cat_curves.reindex(index=grid, method=self.imputation_method, copy=False)
+
+        # Dummified curves for each present category
+        cat_curves = pd.get_dummies(cat_curves.to_frame(), prefix=channel_name, prefix_sep=' ') 
+
+        return  cat_curves
+
+    def __call__(self, data, grid, **kwargs):
+        """Build the K binary curves for all channels in the categorical measurements mode 
+        from `data` at time points given by `grid`.
+
+        This builder estimates one binary curve per each of the K result categories in `data`.
+        These curves indicate if a result is 'active' (curve=1) or 'absent' (curve=0) at the points in `grid`. 
+        Information for such inference is sourced from the observations and times in `data`.
+        This builder makes the following assumptions when building curves for each channel:
 
             i) In case of overlap of distinct results during rounding to the desired temporal 
             curve resolution, the last lab result is kept. (e.g. with a resolution >'1D' if 
             for a single day two records are present we assume the last is the correct one as if
             the first was, for example, a data entry error).
         
-            ii) Mutual exclusivity is assumed. After rounding, a change in the lab test result is
+            ii) Mutual exclusivity is assumed within each channel. After rounding, a change in the observed category is
             considered an observation of absence for the previous one. Curve values between adjacent 
-            rounded observations are interpolated using `self.imputation_method`.
+            rounded observations are interpolated using `self.imputation_method` to infer the transition time.
 
         Args:
             data: a pandas dataframe with a DatetimeIndex containing columns 'channel' and 'value' that 
@@ -700,53 +740,21 @@ class CategoricalCurveBuilder(CurveBuilder):
 
             kwargs: not used.
         """
-
-        # Ensure that the index is a DatetimeIndex
-        assert isinstance(data.index, pd.DatetimeIndex), "The DataFrame index is not a DatetimeIndex"
-
-        freqstr = grid.freqstr
-    
         all_channels = data['channel'].unique() # Get all channels in the Categorical labs mode
-
-        all_curves_df = pd.DataFrame(index = grid)
-
-        data.sort_index(inplace = True) # Sort data according to event date (index)
-
-        # Get curves for each channel
+        
+        all_curves_df = pd.DataFrame(index = grid) # DataFrame to hold all binary curves for all categories of all channels
+        
         for channel in all_channels:
-
             data_channel = data[data['channel']==channel]
-
-            # The last chronological value is kept for each group of values rounded to the same date given the 
-            # `grid` resolution. This only happens when the requested resolution is larger than the interevent time. 
-            # This assumption is made because some measurements may be repeated several times in a short span of time
-            # under the suspicion of a lab error. Normally, the last one is considered the "good" one.
-            cat_curve = data_channel['value'].groupby(data_channel.index.round(freqstr)).last()
-
-            # Fill intervals between observations.
-            cat_curve = cat_curve.reindex(index=grid, method=self.imputation_method)
-
-            # Dummified curves for each present category
-            cat_curve = pd.get_dummies(cat_curve.to_frame(), prefix=[channel]) 
-
-            curveset = {'date':grid}
-
-            #Assign all observed binary curves 
-            for curve in cat_curve.columns:
-                curveset[curve] = cat_curve[curve] 
-
-            #Generate curve with values on the grid dates
-            curve_df = pd.DataFrame.from_dict(curveset)
-            curve_df.set_index('date', inplace = True)
-
-            #Append the bianry curves to the overall dataframe
-            all_curves_df = all_curves_df.join([curve_df])
-
-        return  all_curves_df
+            kwargs['channel_name']=channel
+            all_curves_df = all_curves_df.join([self._build_single_curve(data_channel, grid, **kwargs)])
+        
+        return all_curves_df
+            
     
 class ValueCurveBuilder(CurveBuilder):
-    """This builder cannonical example is a measurement (e.g. laboratory test, BMI, etc)
-    numerical value, normally continuous.
+    """This builder cannonical example is a continuous numerical measurement
+    such as laboratory tests, BMI, etc.
 
     The builder takes as input the discrete observations along its dates and estimates
     the transition time from current to the subsequent observation.
@@ -764,45 +772,65 @@ class ValueCurveBuilder(CurveBuilder):
             date. 'ffill' fills with the previous observed value, causing any
             transition to be made just before the second observed
             date. 'nearest' (default) fills with the nearest observed value,
-            causing any transition to be made at the midpoint. `None` (the
-            keyword, not the string) provides no interpolation between dates -
-            any date not specifically observed as present is computed as
+            causing any transition to be made at the midpoint between observations.
+            `None` (the keyword, not the string) provides no interpolation between dates -
+            any date not specifically observed as present is computed as NaN (missing data).
             absent. """
     
     def __init__(self, imputation_method='nearest'):
         super().__init__()
         self.imputation_method = imputation_method
     
+    
+    def _build_single_curve(self, data, grid, **kwargs):
+        """Build a single curve from `data` at time points given by `grid`.
+        
+        Args:
+            data: a pandas dataframe with a DatetimeIndex containing the times
+                of events for this channel. All other columns are ignored.
+            grid: a pandas Index of timestamps giving the times at which to
+                estimate the curve value.
+            kwargs: *Not used*
+        
+        Returns:
+            A pandas.Series of floats values at dates specified by `grid`.
+            Values between observations of the same channel are interpolated attending to the 
+            imputation method. For values whose date is rounded to the same date, only the last observed value 
+            is considered before interpolation.
+        """
+        
+        # Ensure that the index is a DatetimeIndex
+        assert isinstance(data.index, pd.DatetimeIndex), "The DataFrame index is not a DatetimeIndex"
+
+        freqstr = grid.freqstr
+        
+        data.sort_index(inplace = True) # Sort data according to event date (index)
+
+        channel_name = data['channel'].unique().item() 
+        
+        # The last chronological value is kept for each group of values observed at the same rounded date
+        # This assumption is made because some measurements may be repeated several times in a short span of time due to, for example, the suspicion of a lab error
+        curve = data['value'].groupby(data.index.round(freqstr)).last().rename(channel_name)
+        
+        # Fill intervals between groups of observations with same rounded date based on imputation_method
+        curve = curve.reindex(index=grid, method=self.imputation_method, copy=False) 
+
+        return curve
+        
     def __call__(self, data, grid, **kwargs):
-        """Build all curves from `data` at time points given by `grid`.
+        """Build a single curve from `data` at time points given by `grid`.
 
         This builder estimates the 'active' value at the points in `grid`. Information for such inference is
         sourced from the observations and times in `data`.
         Args:
             data: a pandas dataframe with the 'value' column that 
-            contains the data for the channel and a DatetimeIndex 
-            indicating the date at which each result was observed.
+                contains the data for the channel and a DatetimeIndex 
+                indicating the date at which each result was observed.
 
             grid: a pandas DatetimeIndex giving the times at which to
                 estimate the binary value.
-
-            kwargs: not used.
         """
-
-        # Ensure that the index is a DatetimeIndex
-        assert isinstance(data.index, pd.DatetimeIndex), "The DataFrame index is not a DatetimeIndex"
-
-        freqstr = grid.freqstr
-
-        data.sort_index(inplace = True) # Sort data according to event date (index)
-
-        # The last chronological value is kept for each group of values rounded to the same date
-        # This assumption is made because some measurements may be repeated several times in a short span of time
-        # under the suspicion of a lab error
-        curve = data['value'].groupby(data.index.round(freqstr)).last()
-
-        # Fill intervals between observations.
-        return curve.reindex(index=grid, method=self.imputation_method)
+        return super().__call__(data, grid, **kwargs)
 
 
 def ExpandingMean():
